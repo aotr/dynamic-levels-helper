@@ -44,8 +44,11 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             __DIR__ . '/../config/dynamic-levels-helper.php' => config_path('dynamic-levels-helper.php'),
         ], 'dynamic-levels-helper-config');
         $this->publishes([
-            __DIR__ . '/../config/stp.php' => config_path('stp.php'),
+            __DIR__ . '/../config/dynamic-levels-helper-stp.php' => config_path('dynamic-levels-helper-stp.php'),
         ], 'dynamic-levels-helper-stp-config');
+        $this->publishes([
+            __DIR__ . '/../config/dynamic-levels-helper-sms.php' => config_path('dynamic-levels-helper-sms.php'),
+        ], 'dynamic-levels-helper-sms-config');
 
     }
 
