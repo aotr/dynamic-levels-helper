@@ -18,12 +18,14 @@ trait DBDataService
 
     public function getData($stpName, $params, $stpConfig = [])
     {
-        if (empty($dbConnection)) {
-            $this->dbConnection = config('dynamic-levels-helper.db_connection_for_db_service');
-        }
+
         $this->stpName = $stpName;
         $this->params = $this->processParams($params);
         $this->dbConnection = $stpConfig['connection'] ?? $this->dbConnection;
+
+        if (empty($this->dbConnection)) {
+            $this->dbConnection = config('dynamic-levels-helper.db_connection_for_db_service');
+        }
 
         try {
             return $this->extractOutput($this->fetchData());
