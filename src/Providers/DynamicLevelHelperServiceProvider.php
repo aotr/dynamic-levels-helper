@@ -29,6 +29,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->registerHelpers();
         $this->registerFacade();
         $this->mergeConfig();
+        $this->mergeLoggingConfig();
     }
 
     /**
@@ -90,5 +91,28 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(
             __DIR__ . '/../config/dynamic-levels-helper.php', 'dynamic-levels-helper'
         );
+    }
+
+    /**
+     * Conditionally merges custom log channels.
+     * Only merges channels if they don't already exist in the app config.
+     */
+    protected function mergeLoggingConfig(): void
+    {
+        // Load custom log channels from the package config
+        $logConfig = require __DIR__ . '/../config/logging.php';
+
+        // Retrieve existing logging channels from the app config
+        $currentChannels = $this->app['config']->get('logging.channels', []);
+
+        // Only add custom channels if they don't already exist
+        foreach ($logConfig['channels'] as $key => $channel) {
+            if (!isset($currentChannels[$key])) {
+                $currentChannels[$key] = $channel;
+            }
+        }
+
+        // Set the modified logging configuration back to the app config
+        $this->app['config']->set('logging.channels', $currentChannels);
     }
 }
