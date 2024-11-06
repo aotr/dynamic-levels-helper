@@ -5,51 +5,51 @@ return [
 
     'providers' => [
         'sinfini' => [
-            'url' => 'http://global.sinfini.com/api/v3/index.php?',
+            'url' => env('SINFINI_URL'),
             'format' => [
                 'method' => 'sms',
-                'api_key' => 'A3c6d4c073dbf5a451b3714ff3f9e2f3b',
+                'api_key' => env('SINFINI_API_KEY'),
                 'to' => '',
-                'sender' => 'DYNAEQ',
+                'sender' => env('SINFINI_SENDER'),
                 'message' => '',
                 'custom' => '',
-                'flash' => '0',
+                'flash' => env('SINFINI_FLASH', '0'),
             ],
         ],
 
         'onex' => [
-            'url' => 'http://203.212.70.200/smpp/sendsms?',
+            'url' => env('ONEX_URL'),
             'format' => [
-                'username' => 'dynaeqapi',
-                'password' => 'dynaeqapi123',
+                'username' => env('ONEX_USERNAME'),
+                'password' => env('ONEX_PASSWORD'),
                 'to' => '',
-                'from' => 'VALSTK',
+                'from' => env('ONEX_FROM'),
                 'text' => '',
             ],
         ],
 
         'myvaluefirst' => [
-            'url' => 'https://www.myvaluefirst.com/smpp/sendsms?dlr-url&',
+            'url' => env('MYVALUEFIRST_URL'),
             'format' => [
-                'username' => 'DynamicEhtptran',
-                'password' => 'Dyna@123',
+                'username' => env('MYVALUEFIRST_USERNAME'),
+                'password' => env('MYVALUEFIRST_PASSWORD'),
                 'to' => '',
-                'from' => 'VALSTK',
+                'from' => env('MYVALUEFIRST_FROM'),
                 'text' => '',
-                'dlr-mask' => '19',
+                'dlr-mask' => env('MYVALUEFIRST_DLR_MASK', '19'),
             ],
         ],
 
         'infobip' => [
-            'url' => 'https://lzq5ww.api.infobip.com/sms/1/text/query?',
-            'api_url' => 'https://lzq5ww.api.infobip.com/sms/2/text/advanced',
+            'url' => env('INFOBIP_URL'),
+            'api_url' => env('INFOBIP_API_URL'),
             'format' => [
-                'username' => 'ValueStock',
-                'password' => 'Dynamic@1234',
-                'indiaDltContentTemplateId' => '1707161475145434548',
-                'indiaDltPrincipalEntityId' => '1701157866538664127',
+                'username' => env('INFOBIP_USERNAME'),
+                'password' => env('INFOBIP_PASSWORD'),
+                'indiaDltContentTemplateId' => env('INFOBIP_DLT_TEMPLATE_ID'),
+                'indiaDltPrincipalEntityId' => env('INFOBIP_DLT_ENTITY_ID'),
                 'to' => '',
-                'from' => 'VALSTK',
+                'from' => env('INFOBIP_FROM'),
                 'text' => '',
             ],
         ],
