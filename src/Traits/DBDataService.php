@@ -16,16 +16,16 @@ trait DBDataService
 
     protected ?string $dbConnection ;
 
+    protected ?string $stpConfigPath;
+
     public function getData($stpName, $params, $stpConfig = [])
     {
 
+        $this->stpConfigPath = $stpConfig['stp_config_path'] ?? $this->stpConfigPath ?? "dynamic-levels-helper-stp";
         $this->stpName = $stpName;
         $this->params = $this->processParams($params);
-        $this->dbConnection = $stpConfig['connection'] ?? $this->dbConnection;
+        $this->dbConnection = $stpConfig['connection'] ?? $this->dbConnection ?? config('dynamic-levels-helper.db_connection_for_db_service');
 
-        if (empty($this->dbConnection)) {
-            $this->dbConnection = config('dynamic-levels-helper.db_connection_for_db_service');
-        }
 
         try {
             return $this->extractOutput($this->fetchData());
@@ -48,7 +48,7 @@ trait DBDataService
         }
 
         $formattedParams = [];
-        $stpConfig = config("stp.{$this->stpName}");
+        $stpConfig = config("{$this->stpConfigPath}.{$this->stpName}");
 
         foreach ($stpConfig as $key => $value) {
             if (array_key_exists($key, $params)) {
