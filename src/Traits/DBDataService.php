@@ -18,7 +18,7 @@ trait DBDataService
 
     public function getData($stpName, $params, $stpConfig = [])
     {
-        if(empty($dbConnection)){
+        if (empty($dbConnection)) {
             $this->dbConnection = config('dynamic-levels-helper.db_connection_for_db_service');
         }
         $this->stpName = $stpName;

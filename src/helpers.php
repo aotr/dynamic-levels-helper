@@ -1,7 +1,8 @@
 <?php
 
 if (!function_exists('getClientIP')) {
-    function getClientIP(){
+    function getClientIP()
+    {
         $headers = [
             'HTTP_CLIENT_IP',
             'HTTP_X_FORWARDED_FOR',

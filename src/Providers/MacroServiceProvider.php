@@ -2,7 +2,6 @@
 
 namespace Aotr\DynamicLevelHelper\Providers;
 
-use Aotr\DynamicLevelHelper\Providers\DynamicLevelHelperServiceProvider;
 use Illuminate\Support\ServiceProvider;
 use Aotr\DynamicLevelHelper\Macros\ResponseMacros;
 

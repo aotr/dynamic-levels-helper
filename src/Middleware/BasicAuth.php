@@ -4,7 +4,6 @@ namespace Aotr\DynamicLevelHelper\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Response;
 
 class BasicAuth
 {

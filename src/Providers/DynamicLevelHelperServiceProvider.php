@@ -93,7 +93,8 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
     protected function mergeConfig(): void
     {
         $this->mergeConfigFrom(
-            __DIR__ . '/../config/dynamic-levels-helper.php', 'dynamic-levels-helper'
+            __DIR__ . '/../config/dynamic-levels-helper.php',
+            'dynamic-levels-helper'
         );
     }
 
