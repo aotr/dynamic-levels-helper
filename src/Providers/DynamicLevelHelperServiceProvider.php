@@ -6,6 +6,7 @@ namespace Aotr\DynamicLevelHelper\Providers;
 
 use Aotr\DynamicLevelHelper\Console\Commands\DynamicLevelsMakeCommand;
 use Aotr\DynamicLevelHelper\DynamicHelpersLoader;
+use Aotr\DynamicLevelHelper\Macros\ResponseMacros;
 use Aotr\DynamicLevelHelper\Middleware\BasicAuth;
 use Illuminate\Support\ServiceProvider;
 
@@ -16,9 +17,11 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        ResponseMacros::register();
         $this->publishConfig();
         $this->registerMiddleware();
         $this->registerConsoleCommands();
+
     }
 
     /**
