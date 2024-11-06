@@ -40,6 +40,10 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__ . '/../config/dynamic-levels-helper.php' => config_path('dynamic-levels-helper.php'),
         ], 'config');
+        $this->publishes([
+            __DIR__ . '/../config/stp.php' => config_path('stp.php'),
+        ], 'config');
+
     }
 
     /**
