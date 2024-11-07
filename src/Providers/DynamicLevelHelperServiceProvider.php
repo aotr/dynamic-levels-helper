@@ -8,6 +8,8 @@ use Aotr\DynamicLevelHelper\Console\Commands\DynamicLevelsMakeCommand;
 use Aotr\DynamicLevelHelper\DynamicHelpersLoader;
 use Aotr\DynamicLevelHelper\Macros\ResponseMacros;
 use Aotr\DynamicLevelHelper\Middleware\BasicAuth;
+use Aotr\DynamicLevelHelper\Services\SMS\SmsProviderInterface;
+use Aotr\DynamicLevelHelper\Services\SMS\SmsService;
 use Illuminate\Support\ServiceProvider;
 
 final class DynamicLevelHelperServiceProvider extends ServiceProvider
@@ -18,6 +20,8 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
     public function boot(): void
     {
         ResponseMacros::register();
+        app()->register(SmsServiceProvider::class);
+
         $this->publishConfig();
         $this->registerMiddleware();
         $this->registerConsoleCommands();
@@ -33,6 +37,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->registerFacade();
         $this->mergeConfig();
         $this->mergeLoggingConfig();
+        $this->app->bind(SmsProviderInterface::class, SmsServiceProvider::class);
     }
 
     /**
@@ -101,6 +106,10 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(
             __DIR__ . '/../config/dynamic-levels-helper.php',
             'dynamic-levels-helper'
+        );
+        $this->mergeConfigFrom(
+            __DIR__ . '/../config/dynamic-levels-helper-sms.php',
+            'dynamic-levels-helper-sms'
         );
     }
 

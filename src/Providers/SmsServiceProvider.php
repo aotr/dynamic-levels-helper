@@ -14,11 +14,12 @@ class SmsServiceProvider extends ServiceProvider
     /**
      * Register services.
      */
-    public function register(): void
+    public function  register(): void
     {
+
         $this->app->bind(SmsProviderInterface::class, function ($app) {
-            $providerKey = config('sms.default_provider');
-            $providerConfig = config('sms.providers.'.$providerKey);
+            $providerKey = config('dynamic-levels-helper-sms.default_provider');
+            $providerConfig = config('dynamic-levels-helper-sms.providers.'.$providerKey);
 
             switch ($providerKey) {
                 case 'onex':
