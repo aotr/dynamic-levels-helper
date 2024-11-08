@@ -55,6 +55,10 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             __DIR__ . '/../config/dynamic-levels-helper-sms.php' => config_path('dynamic-levels-helper-sms.php'),
         ], 'dynamic-levels-helper-sms-config');
 
+        $this->publishes([
+            __DIR__ . '/../config/dynamic-levels-helper-whatsapp.php' => config_path('dynamic-levels-helper-whatsapp.php'),
+        ], 'dynamic-levels-helper-whatsapp-config');
+
     }
 
     /**
@@ -110,6 +114,10 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(
             __DIR__ . '/../config/dynamic-levels-helper-sms.php',
             'dynamic-levels-helper-sms'
+        );
+        $this->mergeConfigFrom(
+            __DIR__ . '/../config/dynamic-levels-helper-whatsapp.php',
+            'dynamic-levels-helper-whatsapp'
         );
     }
 
