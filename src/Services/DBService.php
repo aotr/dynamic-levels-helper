@@ -32,9 +32,12 @@ class DBService
      * @return array
      * @throws RuntimeException
      */
-    public function callStoredProcedure(string $storedProcedureName, array $parameters = [])
+    public function callStoredProcedure(string $storedProcedureName, array $parameters = [], array $config = [])
     {
-        if (!$this->checkStoredProcedure($storedProcedureName)) {
+        $config = array_merge([
+            'checkStoredProcedure' => false,
+        ], $config);
+        if ( $config["checkStoredProcedure"] && !$this->checkStoredProcedure($storedProcedureName)) {
             $errorMessage = $storedProcedureName . ' - Stored Procedure does not exist';
             Log::critical($this->buildLogMessage($errorMessage, $storedProcedureName, $parameters));
             throw new RuntimeException($errorMessage);
