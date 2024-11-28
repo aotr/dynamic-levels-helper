@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace Aotr\DynamicLevelHelper\Services;
 
 use Illuminate\Support\Facades\Cache;
 
