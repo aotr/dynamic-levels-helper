@@ -1,53 +1,53 @@
 {
-    "name": "aotr/dynamic-levels-helper",
-    "description": "A set of tools to make working with dynamic levels organize easier in Laravel",
-    "type": "library",
-    "authors": [
-      {
-        "role": "Developer",
-        "name": "Animesh Chakraborty",
-        "email": "animesh.aotr@gmail.com",
-        "homepage": "https://github.com/aotr/"
-      }
-    ],
-    "autoload": {
-      "psr-4": {
-        "Aotr\\DynamicLevelHelper\\": "src/"
-      }
-    },
-    "autoload-dev": {
-      "psr-4": {
-        "Aotr\\DynamicLevelHelper\\Tests\\": "tests/"
-      }
-    },
-    "require": {
-        "php": "^8.1",
-        "illuminate/support": "^11.30"
-    },
-    "files": [
-        "src/helpers.php"
-    ],
-    "minimum-stability": "dev",
-    "prefer-stable": true,
-    "config": {
-      "sort-packages": true,
-      "preferred-install": "dist",
-      "optimize-autoloader": true,
-        "allow-plugins": {
-            "pestphp/pest-plugin": true
-        }
-    },
-    "extra": {
-        "laravel": {
-            "providers": [
-                "Aotr\\DynamicLevelHelper\\Providers\\DynamicLevelHelperServiceProvider"
-            ]
-        }
-    },
-    "require-dev": {
-        "laravel/pint": "^1.18",
-        "orchestra/testbench": "^9.5",
-        "pestphp/pest": "^3.5",
-        "phpstan/phpstan": "^1.12"
+  "name": "aotr/dynamic-levels-helper",
+  "description": "A set of tools to make working with dynamic levels organize easier in Laravel",
+  "type": "library",
+  "authors": [
+    {
+    "role": "Developer",
+    "name": "Animesh Chakraborty",
+    "email": "animesh.aotr@gmail.com",
+    "homepage": "https://github.com/aotr/"
     }
+  ],
+  "autoload": {
+    "psr-4": {
+    "Aotr\\DynamicLevelHelper\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+    "Aotr\\DynamicLevelHelper\\Tests\\": "tests/"
+    }
+  },
+  "require": {
+    "php": "^8.1",
+    "illuminate/support": "^12.0"
+  },
+  "files": [
+    "src/helpers.php"
+  ],
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "config": {
+    "sort-packages": true,
+    "preferred-install": "dist",
+    "optimize-autoloader": true,
+    "allow-plugins": {
+      "pestphp/pest-plugin": true
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "Aotr\\DynamicLevelHelper\\Providers\\DynamicLevelHelperServiceProvider"
+      ]
+    }
+  },
+  "require-dev": {
+    "laravel/pint": "^1.18",
+    "orchestra/testbench": "^9.5",
+    "pestphp/pest": "^3.5",
+    "phpstan/phpstan": "^1.12"
+  }
 }
