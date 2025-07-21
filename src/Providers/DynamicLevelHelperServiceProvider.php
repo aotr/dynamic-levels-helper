@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aotr\DynamicLevelHelper\Providers;
 
 use Aotr\DynamicLevelHelper\Console\Commands\DynamicLevelsMakeCommand;
+use Aotr\DynamicLevelHelper\Console\Commands\EnhancedDBServiceCommand;
 use Aotr\DynamicLevelHelper\DynamicHelpersLoader;
 use Aotr\DynamicLevelHelper\Macros\ResponseMacros;
 use Aotr\DynamicLevelHelper\Middleware\BasicAuth;
@@ -79,7 +80,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 DynamicLevelsMakeCommand::class,
-                \Aotr\DynamicLevelHelper\Console\Commands\EnhancedDBServiceCommand::class,
+                EnhancedDBServiceCommand::class,
             ]);
         }
     }
