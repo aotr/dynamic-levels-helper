@@ -1,0 +1,747 @@
+<?php
+
+namespace Aotr\DynamicLevelHelper\Services;
+
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
+use Exception;
+
+/**
+ * Enhanced Database Service with Singleton Pattern, Connection Pooling, and Configurable Logging
+ *
+ * Features:
+ * - Singleton pattern for efficient resource management
+ * - Connection pooling with automatic cleanup
+ * - Configurable logging levels and channels
+ * - Performance monitoring and slow query detection
+ * - Cached stored procedure existence checks
+ * - Automatic retry logic for failed connections
+ */
+class EnhancedDBService
+{
+    /**
+     * @var EnhancedDBService|null Singleton instance
+     */
+    private static ?EnhancedDBService $instance = null;
+
+    /**
+     * @var DBConnectionPool Connection pool manager
+     */
+    private DBConnectionPool $connectionPool;
+
+    /**
+     * @var array Service configuration
+     */
+    private array $config;
+
+    /**
+     * @var string Default database connection
+     */
+    private string $defaultConnection;
+
+    /**
+     * @var array Performance metrics
+     */
+    private array $performanceMetrics = [];
+
+    /**
+     * Private constructor to prevent direct instantiation
+     */
+    private function __construct()
+    {
+        $this->loadConfiguration();
+        $this->connectionPool = new DBConnectionPool($this->config['connection_pool']);
+        $this->defaultConnection = $this->config['default_connection'];
+    }
+
+    /**
+     * Get singleton instance
+     *
+     * @return EnhancedDBService
+     */
+    public static function getInstance(): EnhancedDBService
+    {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+
+        return self::$instance;
+    }
+
+    /**
+     * Reset singleton instance (useful for testing)
+     *
+     * @return void
+     */
+    public static function resetInstance(): void
+    {
+        if (self::$instance !== null) {
+            self::$instance->connectionPool->closeAllConnections();
+            self::$instance = null;
+        }
+    }
+
+    /**
+     * Load configuration from Laravel config
+     *
+     * @return void
+     */
+    private function loadConfiguration(): void
+    {
+        $this->config = config('dynamic-levels-helper.enhanced_db_service', [
+            'default_connection' => 'mysql',
+            'logging' => [
+                'enabled' => true,
+                'channel' => 'stp',
+                'log_queries' => true,
+                'log_errors' => true,
+                'log_execution_time' => true,
+            ],
+            'connection_pool' => [
+                'max_connections' => 10,
+                'pool_timeout' => 30,
+                'idle_timeout' => 300,
+                'retry_attempts' => 3,
+            ],
+            'cache' => [
+                'procedure_exists_ttl' => 86400,
+                'enabled' => true,
+            ],
+            'performance' => [
+                'slow_query_threshold' => 2.0,
+                'enable_query_profiling' => false,
+            ],
+        ]);
+    }
+
+    /**
+     * Call a stored procedure with enhanced features
+     *
+     * @param string $storedProcedureName The name of the stored procedure to call
+     * @param array $parameters Parameters to pass to the stored procedure
+     * @param array $options Configuration options for the method
+     *   - `connection` (string): Database connection to use
+     *   - `checkStoredProcedure` (bool): Whether to check if the stored procedure exists
+     *   - `enableLogging` (bool): Override logging configuration
+     *   - `timeout` (int): Query timeout in seconds
+     *   - `retryAttempts` (int): Number of retry attempts for transient failures
+     *   - `retryDelay` (int): Base delay between retries in milliseconds
+     * @return array An array of result sets
+     * @throws RuntimeException If execution fails after all retries
+     */
+    public function callStoredProcedure(string $storedProcedureName, array $parameters = [], array $options = []): array
+    {
+        $options = array_merge([
+            'connection' => $this->defaultConnection,
+            'checkStoredProcedure' => false,
+            'enableLogging' => null,
+            'timeout' => 30,
+            'retryAttempts' => null, // Use config default if not specified
+            'retryDelay' => 100, // milliseconds
+        ], $options);
+
+        $connection = $options['connection'];
+        $retryAttempts = $options['retryAttempts'] ?? $this->config['connection_pool']['retry_attempts'];
+        $retryDelay = $options['retryDelay'];
+
+        $attempt = 0;
+        $lastException = null;
+
+        while ($attempt <= $retryAttempts) {
+            try {
+                return $this->executeStoredProcedure($storedProcedureName, $parameters, $options, $attempt);
+
+            } catch (Exception $e) {
+                $lastException = $e;
+                $attempt++;
+
+                // Check if this is a retryable error
+                if ($attempt <= $retryAttempts && $this->isRetryableError($e)) {
+                    $this->logRetryAttempt($storedProcedureName, $parameters, $e, $attempt, $retryAttempts);
+
+                    // Calculate delay with exponential backoff
+                    $delay = $this->calculateRetryDelay($retryDelay, $attempt);
+                    usleep($delay * 1000); // Convert to microseconds
+
+                    // Reset connection pool if connection issue
+                    if ($this->isConnectionError($e)) {
+                        $this->connectionPool->closeAllConnections();
+                    }
+
+                    continue;
+                }
+
+                // Not retryable or max attempts reached
+                break;
+            }
+        }
+
+        // All retries failed
+        $errorMessage = "Database error in stored procedure '{$storedProcedureName}' after {$attempt} attempts: {$lastException->getMessage()}";
+        $this->logError($errorMessage, $storedProcedureName, $parameters, '', $connection, $lastException);
+
+        throw new RuntimeException($errorMessage, 0, $lastException);
+    }
+
+    /**
+     * Execute stored procedure (internal method for retry logic)
+     *
+     * @param string $storedProcedureName
+     * @param array $parameters
+     * @param array $options
+     * @param int $attempt
+     * @return array
+     * @throws Exception
+     */
+    private function executeStoredProcedure(string $storedProcedureName, array $parameters, array $options, int $attempt): array
+    {
+        $connection = $options['connection'];
+        $startTime = microtime(true);
+        $queryId = $this->generateQueryId() . "_attempt_{$attempt}";
+
+        // Check stored procedure existence if required
+        if ($options['checkStoredProcedure'] && !$this->checkStoredProcedure($storedProcedureName, $connection)) {
+            $errorMessage = "Stored Procedure '{$storedProcedureName}' does not exist";
+            $this->logError($errorMessage, $storedProcedureName, $parameters, '', $connection);
+            throw new RuntimeException($errorMessage);
+        }
+
+        // Prepare SQL
+        $placeholders = implode(',', array_fill(0, count($parameters), '?'));
+        $sql = "CALL {$storedProcedureName}({$placeholders})";
+
+        // Get connection from pool
+        $pdo = $this->connectionPool->getConnection($connection);
+
+        // Log query start
+        $this->logQueryStart($queryId, $sql, $parameters, $connection);
+
+        // Execute query with timeout
+        $stmt = $pdo->prepare($sql);
+
+        // Set query timeout if supported
+        if (method_exists($stmt, 'setAttribute')) {
+            $stmt->setAttribute(\PDO::ATTR_TIMEOUT, $options['timeout']);
+        }
+
+        $stmt->execute($parameters);
+
+        // Fetch all result sets
+        $resultSets = [];
+        do {
+            $resultSet = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            if (!empty($resultSet) || empty($resultSets)) {
+                $resultSets[] = $resultSet;
+            }
+        } while ($stmt->nextRowset());
+
+        // Calculate execution time
+        $executionTime = microtime(true) - $startTime;
+
+        // Release connection back to pool
+        $this->connectionPool->releaseConnection($connection);
+
+        // Log successful execution
+        $this->logQueryComplete($queryId, $sql, $parameters, $executionTime, $connection, count($resultSets));
+
+        // Check for slow queries
+        if ($executionTime > $this->config['performance']['slow_query_threshold']) {
+            $this->logSlowQuery($sql, $parameters, $executionTime, $connection);
+        }
+
+        // Store performance metrics
+        $this->recordPerformanceMetrics($storedProcedureName, $executionTime, count($resultSets));
+
+        // Log to Laravel's query log for Telescope compatibility
+        if ($this->shouldLogToQueryLog()) {
+            DB::connection($connection)->logQuery($sql, $parameters, $executionTime * 1000);
+        }
+
+        return $resultSets;
+    }
+
+    /**
+     * Check if a stored procedure exists with caching
+     *
+     * @param string $procedureName
+     * @param string $connection
+     * @return bool
+     */
+    private function checkStoredProcedure(string $procedureName, string $connection): bool
+    {
+        if (!$this->config['cache']['enabled']) {
+            return $this->checkStoredProcedureInDatabase($procedureName, $connection);
+        }
+
+        $cacheKey = "enhanced_sp_exists_{$connection}_{$procedureName}";
+
+        return Cache::remember($cacheKey, $this->config['cache']['procedure_exists_ttl'], function () use ($procedureName, $connection) {
+            return $this->checkStoredProcedureInDatabase($procedureName, $connection);
+        });
+    }
+
+    /**
+     * Check stored procedure existence in database
+     *
+     * @param string $procedureName
+     * @param string $connection
+     * @return bool
+     */
+    private function checkStoredProcedureInDatabase(string $procedureName, string $connection): bool
+    {
+        try {
+            return DB::connection($connection)
+                ->table('information_schema.routines')
+                ->where('SPECIFIC_NAME', $procedureName)
+                ->where('ROUTINE_SCHEMA', DB::connection($connection)->getDatabaseName())
+                ->exists();
+        } catch (Exception $e) {
+            $this->logError("Failed to check stored procedure existence: {$e->getMessage()}", $procedureName, [], '', $connection, $e);
+            return false;
+        }
+    }
+
+    /**
+     * Get connection pool statistics
+     *
+     * @return array
+     */
+    public function getConnectionPoolStats(): array
+    {
+        return $this->connectionPool->getPoolStats();
+    }
+
+    /**
+     * Get performance metrics
+     *
+     * @return array
+     */
+    public function getPerformanceMetrics(): array
+    {
+        return $this->performanceMetrics;
+    }
+
+    /**
+     * Clear performance metrics
+     *
+     * @return void
+     */
+    public function clearPerformanceMetrics(): void
+    {
+        $this->performanceMetrics = [];
+    }
+
+    /**
+     * Generate unique query ID for tracking
+     *
+     * @return string
+     */
+    private function generateQueryId(): string
+    {
+        return uniqid('enhanced_query_', true);
+    }
+
+    /**
+     * Record performance metrics
+     *
+     * @param string $procedureName
+     * @param float $executionTime
+     * @param int $resultSets
+     * @return void
+     */
+    private function recordPerformanceMetrics(string $procedureName, float $executionTime, int $resultSets): void
+    {
+        if (!$this->config['performance']['enable_query_profiling']) {
+            return;
+        }
+
+        if (!isset($this->performanceMetrics[$procedureName])) {
+            $this->performanceMetrics[$procedureName] = [
+                'total_calls' => 0,
+                'total_time' => 0,
+                'avg_time' => 0,
+                'min_time' => PHP_FLOAT_MAX,
+                'max_time' => 0,
+                'total_result_sets' => 0,
+            ];
+        }
+
+        $metrics = &$this->performanceMetrics[$procedureName];
+        $metrics['total_calls']++;
+        $metrics['total_time'] += $executionTime;
+        $metrics['avg_time'] = $metrics['total_time'] / $metrics['total_calls'];
+        $metrics['min_time'] = min($metrics['min_time'], $executionTime);
+        $metrics['max_time'] = max($metrics['max_time'], $executionTime);
+        $metrics['total_result_sets'] += $resultSets;
+    }
+
+    /**
+     * Log query start
+     *
+     * @param string $queryId
+     * @param string $sql
+     * @param array $parameters
+     * @param string $connection
+     * @return void
+     */
+    private function logQueryStart(string $queryId, string $sql, array $parameters, string $connection): void
+    {
+        if (!$this->shouldLog() || !$this->config['logging']['log_queries']) {
+            return;
+        }
+
+        $this->log('info', 'Enhanced Query started', [
+            'query_id' => $queryId,
+            'sql' => $sql,
+            'parameters' => $parameters,
+            'connection' => $connection,
+            'timestamp' => now()->toISOString(),
+        ]);
+    }
+
+    /**
+     * Log query completion
+     *
+     * @param string $queryId
+     * @param string $sql
+     * @param array $parameters
+     * @param float $executionTime
+     * @param string $connection
+     * @param int $resultSets
+     * @return void
+     */
+    private function logQueryComplete(string $queryId, string $sql, array $parameters, float $executionTime, string $connection, int $resultSets): void
+    {
+        if (!$this->shouldLog() || !$this->config['logging']['log_execution_time']) {
+            return;
+        }
+
+        $this->log('info', 'Enhanced Query completed', [
+            'query_id' => $queryId,
+            'sql' => $sql,
+            'parameters' => $parameters,
+            'execution_time' => round($executionTime, 4),
+            'result_sets' => $resultSets,
+            'connection' => $connection,
+            'timestamp' => now()->toISOString(),
+        ]);
+    }
+
+    /**
+     * Log query error
+     *
+     * @param string $queryId
+     * @param string $sql
+     * @param array $parameters
+     * @param float $executionTime
+     * @param string $connection
+     * @param Exception $exception
+     * @return void
+     */
+    private function logQueryError(string $queryId, string $sql, array $parameters, float $executionTime, string $connection, Exception $exception): void
+    {
+        if (!$this->shouldLog() || !$this->config['logging']['log_errors']) {
+            return;
+        }
+
+        $this->log('error', 'Enhanced Query failed', [
+            'query_id' => $queryId,
+            'sql' => $sql,
+            'parameters' => $parameters,
+            'execution_time' => round($executionTime, 4),
+            'connection' => $connection,
+            'error_message' => $exception->getMessage(),
+            'error_code' => $exception->getCode(),
+            'timestamp' => now()->toISOString(),
+        ]);
+    }
+
+    /**
+     * Log slow query
+     *
+     * @param string $sql
+     * @param array $parameters
+     * @param float $executionTime
+     * @param string $connection
+     * @return void
+     */
+    private function logSlowQuery(string $sql, array $parameters, float $executionTime, string $connection): void
+    {
+        if (!$this->shouldLog()) {
+            return;
+        }
+
+        $this->log('warning', 'Enhanced Slow query detected', [
+            'sql' => $sql,
+            'parameters' => $parameters,
+            'execution_time' => round($executionTime, 4),
+            'threshold' => $this->config['performance']['slow_query_threshold'],
+            'connection' => $connection,
+            'timestamp' => now()->toISOString(),
+        ]);
+    }
+
+    /**
+     * Log error messages
+     *
+     * @param string $message
+     * @param string $storedProcedureName
+     * @param array $parameters
+     * @param string $sql
+     * @param string $connection
+     * @param Exception|null $exception
+     * @return void
+     */
+    private function logError(string $message, string $storedProcedureName, array $parameters, string $sql = '', string $connection = '', Exception $exception = null): void
+    {
+        if (!$this->shouldLog() || !$this->config['logging']['log_errors']) {
+            return;
+        }
+
+        $context = [
+            'service' => 'EnhancedDBService',
+            'message' => $message,
+            'stored_procedure_name' => $storedProcedureName,
+            'parameters' => $parameters,
+            'sql' => $sql,
+            'connection' => $connection,
+            'user_session' => session()->getId() ?? 'N/A',
+            'ip' => request()->ip() ?? 'N/A',
+            'timestamp' => now()->toISOString(),
+        ];
+
+        if ($exception) {
+            $context['exception'] = [
+                'message' => $exception->getMessage(),
+                'code' => $exception->getCode(),
+                'file' => $exception->getFile(),
+                'line' => $exception->getLine(),
+                'trace' => $exception->getTraceAsString(),
+            ];
+        }
+
+        $this->log('critical', $message, $context);
+    }
+
+    /**
+     * Generic logging method
+     *
+     * @param string $level
+     * @param string $message
+     * @param array $context
+     * @return void
+     */
+    private function log(string $level, string $message, array $context = []): void
+    {
+        if (!$this->shouldLog()) {
+            return;
+        }
+
+        $channel = $this->config['logging']['channel'];
+        Log::channel($channel)->{$level}($message, $context);
+    }
+
+    /**
+     * Check if logging is enabled
+     *
+     * @return bool
+     */
+    private function shouldLog(): bool
+    {
+        return $this->config['logging']['enabled'] ?? true;
+    }
+
+    /**
+     * Check if should log to Laravel query log
+     *
+     * @return bool
+     */
+    private function shouldLogToQueryLog(): bool
+    {
+        return $this->config['logging']['log_queries'] ?? true;
+    }
+
+    /**
+     * Check if an error is retryable
+     *
+     * @param Exception $e
+     * @return bool
+     */
+    private function isRetryableError(Exception $e): bool
+    {
+        $message = strtolower($e->getMessage());
+        $code = $e->getCode();
+
+        // Common retryable error patterns
+        $retryablePatterns = [
+            // Connection issues
+            'connection lost',
+            'connection timeout',
+            'connection refused',
+            'connection reset',
+            'server has gone away',
+            'lost connection to mysql server',
+            'mysql server has gone away',
+
+            // Lock timeouts
+            'lock wait timeout exceeded',
+            'table is locked',
+            'deadlock found',
+            'deadlock detected',
+
+            // Temporary unavailability
+            'too many connections',
+            'max_connections',
+            'service temporarily unavailable',
+            'resource temporarily unavailable',
+
+            // Network issues
+            'network error',
+            'timeout expired',
+            'operation timed out',
+            'broken pipe',
+
+            // Transaction conflicts
+            'serialization failure',
+            'could not serialize',
+            'restart transaction',
+        ];
+
+        // Check message patterns
+        foreach ($retryablePatterns as $pattern) {
+            if (strpos($message, $pattern) !== false) {
+                return true;
+            }
+        }
+
+        // Check specific error codes (MySQL/MariaDB)
+        $retryableCodes = [
+            1040, // ER_CON_COUNT_ERROR - Too many connections
+            1053, // ER_SERVER_SHUTDOWN - Server shutdown in progress
+            1205, // ER_LOCK_WAIT_TIMEOUT - Lock wait timeout exceeded
+            1213, // ER_LOCK_DEADLOCK - Deadlock found when trying to get lock
+            2002, // CR_CONNECTION_ERROR - Can't connect to local MySQL server
+            2003, // CR_CONN_HOST_ERROR - Can't connect to MySQL server
+            2006, // CR_SERVER_GONE_ERROR - MySQL server has gone away
+            2013, // CR_SERVER_LOST - Lost connection to MySQL server during query
+        ];
+
+        if (in_array($code, $retryableCodes)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if an error is a connection-related error
+     *
+     * @param Exception $e
+     * @return bool
+     */
+    private function isConnectionError(Exception $e): bool
+    {
+        $message = strtolower($e->getMessage());
+        $code = $e->getCode();
+
+        $connectionPatterns = [
+            'connection lost',
+            'connection timeout',
+            'connection refused',
+            'connection reset',
+            'server has gone away',
+            'lost connection to mysql server',
+            'mysql server has gone away',
+            'broken pipe',
+        ];
+
+        foreach ($connectionPatterns as $pattern) {
+            if (strpos($message, $pattern) !== false) {
+                return true;
+            }
+        }
+
+        $connectionCodes = [2002, 2003, 2006, 2013];
+        return in_array($code, $connectionCodes);
+    }
+
+    /**
+     * Calculate retry delay with exponential backoff
+     *
+     * @param int $baseDelay Base delay in milliseconds
+     * @param int $attempt Current attempt number
+     * @return int Delay in milliseconds
+     */
+    private function calculateRetryDelay(int $baseDelay, int $attempt): int
+    {
+        // Exponential backoff: baseDelay * 2^(attempt-1) with jitter
+        $delay = $baseDelay * pow(2, $attempt - 1);
+
+        // Add jitter (random factor between 0.5 and 1.5 to prevent thundering herd)
+        $jitter = 0.5 + (mt_rand() / mt_getrandmax());
+        $delay = (int)($delay * $jitter);
+
+        // Cap maximum delay at 30 seconds
+        return min($delay, 30000);
+    }
+
+    /**
+     * Log retry attempt
+     *
+     * @param string $storedProcedureName
+     * @param array $parameters
+     * @param Exception $exception
+     * @param int $attempt
+     * @param int $maxAttempts
+     */
+    private function logRetryAttempt(string $storedProcedureName, array $parameters, Exception $exception, int $attempt, int $maxAttempts): void
+    {
+        if (!$this->shouldLog()) {
+            return;
+        }
+
+        $context = [
+            'stored_procedure' => $storedProcedureName,
+            'parameters' => json_encode($parameters),
+            'attempt' => $attempt,
+            'max_attempts' => $maxAttempts,
+            'error_message' => $exception->getMessage(),
+            'error_code' => $exception->getCode(),
+            'retryable' => $this->isRetryableError($exception),
+            'connection_error' => $this->isConnectionError($exception),
+        ];
+
+        $this->log('warning',
+            "Retrying stored procedure '{$storedProcedureName}' (attempt {$attempt}/{$maxAttempts}) due to: {$exception->getMessage()}",
+            $context
+        );
+    }
+
+    /**
+     * Prevent cloning of singleton
+     */
+    private function __clone()
+    {
+        throw new RuntimeException('Cannot clone singleton EnhancedDBService');
+    }
+
+    /**
+     * Prevent unserialization of singleton
+     */
+    public function __wakeup()
+    {
+        throw new RuntimeException('Cannot unserialize singleton EnhancedDBService');
+    }
+
+    /**
+     * Clean up connections on destruction
+     */
+    public function __destruct()
+    {
+        if ($this->connectionPool) {
+            $this->connectionPool->closeAllConnections();
+        }
+    }
+}

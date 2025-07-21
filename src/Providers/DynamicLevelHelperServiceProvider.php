@@ -21,6 +21,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
     {
         ResponseMacros::register();
         app()->register(SmsServiceProvider::class);
+        app()->register(EnhancedDBServiceProvider::class);
 
         $this->publishConfig();
         $this->registerMiddleware();
@@ -77,6 +78,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 DynamicLevelsMakeCommand::class,
+                \Aotr\DynamicLevelHelper\Console\Commands\EnhancedDBServiceCommand::class,
             ]);
         }
     }
