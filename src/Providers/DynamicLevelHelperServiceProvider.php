@@ -8,6 +8,7 @@ use Aotr\DynamicLevelHelper\Console\Commands\DynamicLevelsMakeCommand;
 use Aotr\DynamicLevelHelper\DynamicHelpersLoader;
 use Aotr\DynamicLevelHelper\Macros\ResponseMacros;
 use Aotr\DynamicLevelHelper\Middleware\BasicAuth;
+use Aotr\DynamicLevelHelper\Providers\EnhancedDBServiceProvider;
 use Aotr\DynamicLevelHelper\Services\SMS\SmsProviderInterface;
 use Aotr\DynamicLevelHelper\Services\SMS\SmsService;
 use Illuminate\Support\ServiceProvider;

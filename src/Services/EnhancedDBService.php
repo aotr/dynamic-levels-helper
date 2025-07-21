@@ -2,6 +2,7 @@
 
 namespace Aotr\DynamicLevelHelper\Services;
 
+use Aotr\DynamicLevelHelper\Services\DBConnectionPool;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -90,7 +91,7 @@ class EnhancedDBService
      */
     private function loadConfiguration(): void
     {
-        $this->config = config('dynamic-levels-helper.enhanced_db_service', [
+        $defaultConfig = [
             'default_connection' => 'mysql',
             'logging' => [
                 'enabled' => true,
@@ -104,6 +105,7 @@ class EnhancedDBService
                 'pool_timeout' => 30,
                 'idle_timeout' => 300,
                 'retry_attempts' => 3,
+                'retry_delay' => 100,
             ],
             'cache' => [
                 'procedure_exists_ttl' => 86400,
@@ -113,7 +115,19 @@ class EnhancedDBService
                 'slow_query_threshold' => 2.0,
                 'enable_query_profiling' => false,
             ],
-        ]);
+        ];
+
+        try {
+            // Try to load from Laravel config if available
+            if (function_exists('config')) {
+                $this->config = config('dynamic-levels-helper.enhanced_db_service', $defaultConfig);
+            } else {
+                $this->config = $defaultConfig;
+            }
+        } catch (\Exception $e) {
+            // Fall back to default config if Laravel config is not available
+            $this->config = $defaultConfig;
+        }
     }
 
     /**
@@ -722,7 +736,7 @@ class EnhancedDBService
     /**
      * Prevent cloning of singleton
      */
-    private function __clone()
+    public function __clone()
     {
         throw new RuntimeException('Cannot clone singleton EnhancedDBService');
     }

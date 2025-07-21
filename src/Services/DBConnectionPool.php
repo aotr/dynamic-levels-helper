@@ -9,7 +9,7 @@ use RuntimeException;
 
 /**
  * Database Connection Pool Manager
- *
+ * 
  * Manages database connections with pooling, retry logic, and performance monitoring.
  */
 class DBConnectionPool
@@ -18,17 +18,17 @@ class DBConnectionPool
      * @var array Pool of database connections
      */
     private static array $connectionPool = [];
-
+    
     /**
      * @var array Connection usage tracking
      */
     private static array $connectionUsage = [];
-
+    
     /**
      * @var array Configuration
      */
     private array $config;
-
+    
     /**
      * @var int Current pool size
      */
@@ -54,14 +54,14 @@ class DBConnectionPool
     public function getConnection(string $connectionName): \PDO
     {
         $connectionKey = $this->getConnectionKey($connectionName);
-
+        
         // Clean up idle connections first
         $this->cleanupIdleConnections();
-
+        
         // Try to get existing connection and validate it
         if (isset(self::$connectionPool[$connectionKey])) {
             $connection = self::$connectionPool[$connectionKey];
-
+            
             // Validate connection is still alive
             if ($this->validateConnection($connection)) {
                 $this->updateConnectionUsage($connectionKey);
@@ -71,24 +71,24 @@ class DBConnectionPool
                 $this->removeConnection($connectionKey);
             }
         }
-
+        
         // Create new connection if pool not full
         if (self::$currentPoolSize < $this->config['max_connections']) {
             return $this->createConnection($connectionName, $connectionKey);
         }
-
+        
         // Wait for available connection or timeout
         $startTime = time();
         while ((time() - $startTime) < $this->config['pool_timeout']) {
             $this->cleanupIdleConnections();
-
+            
             if (self::$currentPoolSize < $this->config['max_connections']) {
                 return $this->createConnection($connectionName, $connectionKey);
             }
-
+            
             usleep(100000); // Wait 100ms before retry
         }
-
+        
         throw new RuntimeException('Connection pool timeout: Unable to acquire database connection');
     }
 
@@ -135,80 +135,83 @@ class DBConnectionPool
     {
         $attempts = 0;
         $lastException = null;
-
+        
         while ($attempts < $this->config['retry_attempts']) {
             try {
                 $pdo = DB::connection($connectionName)->getPdo();
-
-                // Store in pool
+                
+                // Store connection in pool
                 self::$connectionPool[$connectionKey] = $pdo;
                 self::$connectionUsage[$connectionKey] = time();
                 self::$currentPoolSize++;
-
+                
                 $this->logConnectionEvent('connection_created', $connectionName, [
                     'pool_size' => self::$currentPoolSize,
-                    'attempt' => $attempts + 1
+                    'max_connections' => $this->config['max_connections'],
                 ]);
-
+                
                 return $pdo;
-
+                
             } catch (Exception $e) {
                 $lastException = $e;
                 $attempts++;
-
+                
                 if ($attempts < $this->config['retry_attempts']) {
-                    // Exponential backoff
-                    $delay = pow(2, $attempts) * 100000; // microseconds
-                    usleep($delay);
+                    usleep(100000); // Wait 100ms before retry
                 }
             }
         }
-
+        
         throw new RuntimeException(
-            "Failed to create database connection after {$attempts} attempts: " .
-            ($lastException ? $lastException->getMessage() : 'Unknown error')
+            "Failed to create database connection after {$attempts} attempts: " . $lastException->getMessage(),
+            0,
+            $lastException
         );
+    }
+
+    /**
+     * Close all connections and reset pool
+     */
+    public function closeAllConnections(): void
+    {
+        self::$connectionPool = [];
+        self::$connectionUsage = [];
+        self::$currentPoolSize = 0;
     }
 
     /**
      * Release a connection back to the pool
      *
      * @param string $connectionName
-     * @return void
      */
     public function releaseConnection(string $connectionName): void
     {
         $connectionKey = $this->getConnectionKey($connectionName);
-
-        if (isset(self::$connectionPool[$connectionKey])) {
-            $this->updateConnectionUsage($connectionKey);
+        
+        if (isset(self::$connectionUsage[$connectionKey])) {
+            self::$connectionUsage[$connectionKey] = time();
         }
     }
 
     /**
      * Clean up idle connections
-     *
-     * @return void
      */
-    private function cleanupIdleConnections(): void
+    public function cleanupIdleConnections(): void
     {
-        $currentTime = time();
-        $removedConnections = 0;
-
-        foreach (self::$connectionUsage as $connectionKey => $lastUsed) {
-            if (($currentTime - $lastUsed) > $this->config['idle_timeout']) {
-                unset(self::$connectionPool[$connectionKey]);
-                unset(self::$connectionUsage[$connectionKey]);
+        $now = time();
+        $idleTimeout = $this->config['idle_timeout'];
+        
+        foreach (self::$connectionUsage as $key => $lastUsed) {
+            if (($now - $lastUsed) > $idleTimeout) {
+                unset(self::$connectionPool[$key]);
+                unset(self::$connectionUsage[$key]);
                 self::$currentPoolSize--;
-                $removedConnections++;
+                
+                $this->logConnectionEvent('connection_idle_cleanup', $key, [
+                    'idle_time' => $now - $lastUsed,
+                    'pool_size' => self::$currentPoolSize,
+                ]);
             }
-        }
-
-        if ($removedConnections > 0) {
-            $this->logConnectionEvent('idle_cleanup', 'pool', [
-                'removed_connections' => $removedConnections,
-                'pool_size' => self::$currentPoolSize
-            ]);
         }
     }
 
@@ -223,27 +226,20 @@ class DBConnectionPool
             'current_pool_size' => self::$currentPoolSize,
             'max_connections' => $this->config['max_connections'],
             'active_connections' => count(self::$connectionPool),
-            'connection_usage' => self::$connectionUsage,
-            'pool_utilization' => round((self::$currentPoolSize / $this->config['max_connections']) * 100, 2),
+            'pool_utilization' => self::$currentPoolSize > 0 
+                ? round((self::$currentPoolSize / $this->config['max_connections']) * 100, 2) 
+                : 0,
         ];
     }
 
     /**
-     * Force close all connections in the pool
+     * Update connection usage timestamp
      *
-     * @return void
+     * @param string $connectionKey
      */
-    public function closeAllConnections(): void
+    private function updateConnectionUsage(string $connectionKey): void
     {
-        $closedConnections = count(self::$connectionPool);
-
-        self::$connectionPool = [];
-        self::$connectionUsage = [];
-        self::$currentPoolSize = 0;
-
-        $this->logConnectionEvent('pool_reset', 'pool', [
-            'closed_connections' => $closedConnections
-        ]);
+        self::$connectionUsage[$connectionKey] = time();
     }
 
     /**
@@ -254,22 +250,11 @@ class DBConnectionPool
      */
     private function getConnectionKey(string $connectionName): string
     {
-        return 'db_pool_' . $connectionName . '_' . getmypid();
+        return $connectionName . '_' . getmypid();
     }
 
     /**
-     * Update connection usage timestamp
-     *
-     * @param string $connectionKey
-     * @return void
-     */
-    private function updateConnectionUsage(string $connectionKey): void
-    {
-        self::$connectionUsage[$connectionKey] = time();
-    }
-
-    /**
-     * Log connection events
+     * Log connection pool events
      *
      * @param string $event
      * @param string $connection
@@ -278,14 +263,18 @@ class DBConnectionPool
      */
     private function logConnectionEvent(string $event, string $connection, array $context = []): void
     {
-        if (config('dynamic-levels-helper.db_service.logging.enabled', true)) {
-            $channel = config('dynamic-levels-helper.db_service.logging.channel', 'stp');
+        try {
+            if (function_exists('config') && config('dynamic-levels-helper.db_service.logging.enabled', true)) {
+                $channel = config('dynamic-levels-helper.db_service.logging.channel', 'stp');
 
-            Log::channel($channel)->info("DB Connection Pool - {$event}", array_merge([
-                'connection' => $connection,
-                'event' => $event,
-                'timestamp' => now()->toISOString(),
-            ], $context));
+                Log::channel($channel)->info("DB Connection Pool - {$event}", array_merge([
+                    'connection' => $connection,
+                    'event' => $event,
+                    'timestamp' => now()->toISOString(),
+                ], $context));
+            }
+        } catch (\Exception $e) {
+            // Silently fail for logging issues
         }
     }
 }
