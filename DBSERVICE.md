@@ -292,6 +292,94 @@ class MyService
 | Configuration | Limited | Extensive |
 | Backward Compatibility | N/A | ✅ |
 
+## Enhanced ParameterService
+
+The package includes a comprehensive `ParameterService` for processing request data into delimited parameter strings, commonly used for stored procedure parameters.
+
+### Key Features
+
+- **Multiple Processing Methods**: Simple and advanced parameter processing
+- **Flexible Delimiters**: Configurable separators (default: '^^')
+- **Nested Array Support**: Access nested values using dot notation (e.g., 'user.profile.name')
+- **Type Safety**: Proper handling of scalar and non-scalar values
+- **Validation Helpers**: Built-in parameter validation and missing parameter detection
+- **Laravel Integration**: Works with both arrays and Laravel Request objects
+- **Facade Support**: Easy access through Laravel facades
+
+### ParameterService Usage Examples
+
+#### Simple Processing (Your Original Approach)
+```php
+use Aotr\DynamicLevelHelper\Services\ParameterService;
+
+// Process all parameters
+$params = ParameterService::processSimple($request);
+// Result: "value1^^value2^^value3"
+
+// Process specific parameters in order
+$params = ParameterService::processSimple($request, ['user_id', 'action', 'status']);
+// Result: "123^^update^^active"
+```
+
+#### Advanced Processing
+```php
+// Custom delimiter
+$params = ParameterService::process($data, null, '|');
+// Result: "value1|value2|value3"
+
+// Nested array access
+$data = ['user' => ['id' => 123, 'name' => 'John']];
+$params = ParameterService::process($data, ['user.id', 'user.name']);
+// Result: "123^^John"
+```
+
+#### Direct Value Creation
+```php
+// From individual values
+$params = ParameterService::fromValues('user123', 'update', 42);
+// Result: "user123^^update^^42"
+```
+
+#### Parameter Validation
+```php
+// Check required parameters
+$isValid = ParameterService::validateRequired($request, ['user_id', 'action']);
+
+// Get missing parameters
+$missing = ParameterService::getMissingRequired($request, ['user_id', 'action', 'status']);
+// Returns: ['status'] if status is missing
+```
+
+#### Utility Methods
+```php
+// Split parameter string back into array
+$values = ParameterService::split('value1^^value2^^value3');
+// Returns: ['value1', 'value2', 'value3']
+
+// Quick method (alias for processSimple)
+$params = ParameterService::quick($request, ['key1', 'key2']);
+```
+
+#### Facade Usage
+```php
+use Aotr\DynamicLevelHelper\Facades\ParameterService;
+
+// After registering facade in config/app.php
+$params = ParameterService::quick($request, ['user_id', 'action']);
+```
+
+### Integration with Database Services
+
+```php
+use Aotr\DynamicLevelHelper\Services\EnhancedDBService;
+use Aotr\DynamicLevelHelper\Services\ParameterService;
+
+// Process request parameters and call stored procedure
+$enhancedDb = EnhancedDBService::getInstance();
+$params = ParameterService::processSimple($request, ['user_id', 'action', 'data']);
+$results = $enhancedDb->callStoredProcedure('UpdateUserData', [$params]);
+```
+
 ## Benefits of Enhanced Version
 
 1. **Resource Efficiency**: Connection pooling reduces database overhead

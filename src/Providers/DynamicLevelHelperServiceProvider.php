@@ -104,6 +104,10 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->app->singleton('dynamic-helpers', function () {
             return new DynamicHelpersLoader();
         });
+
+        $this->app->singleton('parameter-service', function () {
+            return new \Aotr\DynamicLevelHelper\Services\ParameterService();
+        });
     }
 
     /**
