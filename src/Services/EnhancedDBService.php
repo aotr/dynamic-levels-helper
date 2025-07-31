@@ -301,7 +301,7 @@ class EnhancedDBService
 
         // Calculate execution time
         $executionTime = microtime(true) - $startTime;
-
+        $resultSets = ["data"=>$resultSets];
         // Record successful execution in history
         $executionHistory[] = [
             'attempt' => $attempt + 1,
@@ -400,9 +400,9 @@ class EnhancedDBService
         ];
 
         // Add result data if successful
-        if ($resultSets !== null) {
-            $executionInfo['data'] = $resultSets;
-        }
+
+        $executionInfo['data'] = $resultSets['data'] ?? [];
+
 
         // Add error information if failed
         if ($finalException !== null) {
