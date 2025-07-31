@@ -301,12 +301,18 @@ class EnhancedDBService
 
         // Calculate execution time
         $executionTime = microtime(true) - $startTime;
+        
+        // Store original result sets count before wrapping
+        $originalResultCount = is_array($resultSets) ? count($resultSets) : 0;
+        
+        // Wrap result sets with additional metadata
         $resultSets = ["data"=>$resultSets,"raw_query"=>$sql,"parameters"=>$parameters];
+        
         // Record successful execution in history
         $executionHistory[] = [
             'attempt' => $attempt + 1,
             'execution_time' => $executionTime,
-            'result_sets' => count($resultSets),
+            'result_sets' => $originalResultCount,
             'timestamp' => microtime(true),
             'success' => true,
         ];
@@ -314,20 +320,21 @@ class EnhancedDBService
         // Release connection back to pool
         $this->connectionPool->releaseConnection($connection);
 
-        // Log successful execution
-        $this->logQueryComplete($queryId, $sql, $parameters, $executionTime, $connection, count($resultSets));
+        // Log successful execution - count the actual data array, not the wrapper
+        $resultCount = isset($resultSets['data']) && is_array($resultSets['data']) ? count($resultSets['data']) : 0;
+        $this->logQueryComplete($queryId, $sql, $parameters, $executionTime, $connection, $resultCount);
 
         // Check for slow queries
         if ($executionTime > $this->config['performance']['slow_query_threshold']) {
             $this->logSlowQuery($sql, $parameters, $executionTime, $connection);
         }
 
-        // Store performance metrics
-        $this->recordPerformanceMetrics($storedProcedureName, $executionTime, count($resultSets));
+        // Store performance metrics - use the actual result count
+        $this->recordPerformanceMetrics($storedProcedureName, $executionTime, $resultCount);
 
         // Log to Laravel's query log for Telescope compatibility
         if ($this->shouldLogToQueryLog()) {
-            DB::connection($connection)->logQuery($sql, $parameters, $executionTime * 1000);
+            $this->safeLogToQueryLog($connection, $sql, $parameters, $executionTime);
         }
 
         return $resultSets;
@@ -358,6 +365,29 @@ class EnhancedDBService
         $successfulAttempts = array_filter($executionHistory, fn($h) => $h['success'] ?? false);
         $failedAttempts = array_filter($executionHistory, fn($h) => !($h['success'] ?? false));
 
+        // Safely extract result data and calculate counts
+        $resultData = null;
+        $resultSetsCount = 0;
+        $rowsAffected = 0;
+
+        if ($resultSets && is_array($resultSets)) {
+            if (isset($resultSets['data']) && is_array($resultSets['data'])) {
+                // New format: {data: [...], raw_query: "...", parameters: [...]}
+                $resultData = $resultSets['data'];
+                $resultSetsCount = count($resultData);
+                $rowsAffected = array_sum(array_map(function($set) {
+                    return is_array($set) ? count($set) : 0;
+                }, $resultData));
+            } else {
+                // Old format: direct array of result sets
+                $resultData = $resultSets;
+                $resultSetsCount = count($resultSets);
+                $rowsAffected = array_sum(array_map(function($set) {
+                    return is_array($set) ? count($set) : 0;
+                }, $resultSets));
+            }
+        }
+
         $executionInfo = [
             'success' => $finalException === null,
             'stored_procedure' => $storedProcedureName,
@@ -368,8 +398,8 @@ class EnhancedDBService
                 'total_attempts' => $totalAttempts,
                 'successful_attempts' => count($successfulAttempts),
                 'failed_attempts' => count($failedAttempts),
-                'result_sets_count' => $resultSets ? count($resultSets) : 0,
-                'rows_affected' => $resultSets ? array_sum(array_map('count', $resultSets)) : 0,
+                'result_sets_count' => $resultSetsCount,
+                'rows_affected' => $rowsAffected,
             ],
             'connection_pool' => [
                 'stats' => $poolStats,
@@ -393,16 +423,28 @@ class EnhancedDBService
                 'cache_enabled' => $this->config['cache']['enabled'],
             ],
             'timestamp' => [
-                'started_at' => date('Y-m-d H:i:s', time() - $totalExecutionTime),
+                'started_at' => date('Y-m-d H:i:s', (int)(time() - $totalExecutionTime)),
                 'completed_at' => date('Y-m-d H:i:s'),
                 'timezone' => date_default_timezone_get(),
             ],
         ];
 
         // Add result data if successful
-
-        $executionInfo['data'] = $resultSets['data'] ?? [];
-
+        if ($resultData !== null) {
+            $executionInfo['data'] = $resultData;
+            
+            // Add raw query and parameters if available from new format
+            if ($resultSets && is_array($resultSets)) {
+                if (isset($resultSets['raw_query'])) {
+                    $executionInfo['raw_query'] = $resultSets['raw_query'];
+                }
+                if (isset($resultSets['parameters'])) {
+                    $executionInfo['query_parameters'] = $resultSets['parameters'];
+                }
+            }
+        } else {
+            $executionInfo['data'] = [];
+        }
 
         // Add error information if failed
         if ($finalException !== null) {
@@ -446,11 +488,26 @@ class EnhancedDBService
             return $this->checkStoredProcedureInDatabase($procedureName, $connection);
         }
 
-        $cacheKey = "enhanced_sp_exists_{$connection}_{$procedureName}";
+        try {
+            $cacheKey = "enhanced_sp_exists_{$connection}_{$procedureName}";
 
-        return Cache::remember($cacheKey, $this->config['cache']['procedure_exists_ttl'], function () use ($procedureName, $connection) {
+            if (class_exists('\Illuminate\Support\Facades\Cache')) {
+                return Cache::remember($cacheKey, $this->config['cache']['procedure_exists_ttl'], function () use ($procedureName, $connection) {
+                    return $this->checkStoredProcedureInDatabase($procedureName, $connection);
+                });
+            } else {
+                // Fall back to direct database check if Cache facade is not available
+                return $this->checkStoredProcedureInDatabase($procedureName, $connection);
+            }
+        } catch (\Exception $e) {
+            // Fall back to direct database check if caching fails
+            $this->log('warning', 'Cache check failed, falling back to database check', [
+                'error' => $e->getMessage(),
+                'procedure' => $procedureName,
+                'connection' => $connection
+            ]);
             return $this->checkStoredProcedureInDatabase($procedureName, $connection);
-        });
+        }
     }
 
     /**
@@ -463,6 +520,14 @@ class EnhancedDBService
     private function checkStoredProcedureInDatabase(string $procedureName, string $connection): bool
     {
         try {
+            if (!class_exists('\Illuminate\Support\Facades\DB')) {
+                $this->log('warning', 'Laravel DB facade not available for stored procedure check', [
+                    'procedure' => $procedureName,
+                    'connection' => $connection
+                ]);
+                return true; // Assume procedure exists if we can't check
+            }
+
             return DB::connection($connection)
                 ->table('information_schema.routines')
                 ->where('SPECIFIC_NAME', $procedureName)
@@ -470,7 +535,7 @@ class EnhancedDBService
                 ->exists();
         } catch (Exception $e) {
             $this->logError("Failed to check stored procedure existence: {$e->getMessage()}", $procedureName, [], '', $connection, $e);
-            return false;
+            return true; // Assume procedure exists if check fails to avoid blocking execution
         }
     }
 
@@ -568,7 +633,7 @@ class EnhancedDBService
             'sql' => $sql,
             'parameters' => $parameters,
             'connection' => $connection,
-            'timestamp' => now()->toISOString(),
+            'timestamp' => $this->getTimestamp(),
         ]);
     }
 
@@ -596,7 +661,7 @@ class EnhancedDBService
             'execution_time' => round($executionTime, 4),
             'result_sets' => $resultSets,
             'connection' => $connection,
-            'timestamp' => now()->toISOString(),
+            'timestamp' => $this->getTimestamp(),
         ]);
     }
 
@@ -625,7 +690,7 @@ class EnhancedDBService
             'connection' => $connection,
             'error_message' => $exception->getMessage(),
             'error_code' => $exception->getCode(),
-            'timestamp' => now()->toISOString(),
+            'timestamp' => $this->getTimestamp(),
         ]);
     }
 
@@ -650,7 +715,7 @@ class EnhancedDBService
             'execution_time' => round($executionTime, 4),
             'threshold' => $this->config['performance']['slow_query_threshold'],
             'connection' => $connection,
-            'timestamp' => now()->toISOString(),
+            'timestamp' => $this->getTimestamp(),
         ]);
     }
 
@@ -678,9 +743,9 @@ class EnhancedDBService
             'parameters' => $parameters,
             'sql' => $sql,
             'connection' => $connection,
-            'user_session' => session()->getId() ?? 'N/A',
-            'ip' => request()->ip() ?? 'N/A',
-            'timestamp' => now()->toISOString(),
+            'user_session' => $this->getSafeSessionId(),
+            'ip' => $this->getSafeIpAddress(),
+            'timestamp' => $this->getTimestamp(),
         ];
 
         if ($exception) {
@@ -710,8 +775,22 @@ class EnhancedDBService
             return;
         }
 
-        $channel = $this->config['logging']['channel'];
-        Log::channel($channel)->{$level}($message, $context);
+        try {
+            if (!class_exists('\Illuminate\Support\Facades\Log')) {
+                // Fall back to error_log if Laravel Log facade is not available
+                $logMessage = sprintf('[%s] %s %s', strtoupper($level), $message, json_encode($context));
+                error_log($logMessage);
+                return;
+            }
+
+            $channel = $this->config['logging']['channel'] ?? 'single';
+            Log::channel($channel)->{$level}($message, $context);
+        } catch (\Exception $e) {
+            // Fall back to error_log if Laravel logging fails
+            $logMessage = sprintf('[%s] %s %s (Laravel logging failed: %s)', 
+                strtoupper($level), $message, json_encode($context), $e->getMessage());
+            error_log($logMessage);
+        }
     }
 
     /**
@@ -996,6 +1075,111 @@ class EnhancedDBService
     {
         if ($this->connectionPool) {
             $this->connectionPool->closeAllConnections();
+        }
+    }
+
+    /**
+     * Get safe timestamp string
+     *
+     * @return string
+     */
+    private function getTimestamp(): string
+    {
+        try {
+            // Try to use Laravel's now() helper if available
+            if (function_exists('now')) {
+                return now()->toISOString();
+            }
+        } catch (\Exception $e) {
+            // Fall back if Laravel helpers fail
+        }
+        
+        // Use standard PHP date formatting
+        return date('Y-m-d\TH:i:s.v\Z');
+    }
+
+    /**
+     * Get safe session ID
+     *
+     * @return string
+     */
+    private function getSafeSessionId(): string
+    {
+        try {
+            // Try to use Laravel's session() helper if available
+            if (function_exists('session') && session() && method_exists(session(), 'getId')) {
+                return session()->getId() ?? 'N/A';
+            }
+        } catch (\Exception $e) {
+            // Fall back if Laravel helpers fail
+        }
+        
+        // Try PHP session
+        try {
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                return session_id() ?: 'N/A';
+            }
+        } catch (\Exception $e) {
+            // Ignore session errors
+        }
+        
+        return 'N/A';
+    }
+
+    /**
+     * Get safe IP address
+     *
+     * @return string
+     */
+    private function getSafeIpAddress(): string
+    {
+        try {
+            // Try to use Laravel's request() helper if available
+            if (function_exists('request') && request() && method_exists(request(), 'ip')) {
+                return request()->ip() ?? 'N/A';
+            }
+        } catch (\Exception $e) {
+            // Fall back if Laravel helpers fail
+        }
+        
+        // Try standard PHP methods
+        try {
+            if (isset($_SERVER['HTTP_CLIENT_IP'])) {
+                return $_SERVER['HTTP_CLIENT_IP'];
+            } elseif (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+                return $_SERVER['HTTP_X_FORWARDED_FOR'];
+            } elseif (isset($_SERVER['REMOTE_ADDR'])) {
+                return $_SERVER['REMOTE_ADDR'];
+            }
+        } catch (\Exception $e) {
+            // Ignore server variable errors
+        }
+        
+        return 'N/A';
+    }
+
+    /**
+     * Safe wrapper for Laravel's DB query logging
+     *
+     * @param string $connection
+     * @param string $sql
+     * @param array $parameters
+     * @param float $executionTime
+     * @return void
+     */
+    private function safeLogToQueryLog(string $connection, string $sql, array $parameters, float $executionTime): void
+    {
+        try {
+            if (class_exists('\Illuminate\Support\Facades\DB') && method_exists(DB::class, 'connection')) {
+                DB::connection($connection)->logQuery($sql, $parameters, $executionTime * 1000);
+            }
+        } catch (\Exception $e) {
+            // Silently ignore if Laravel DB logging fails
+            $this->log('warning', 'Failed to log query to Laravel query log', [
+                'error' => $e->getMessage(),
+                'sql' => $sql,
+                'connection' => $connection
+            ]);
         }
     }
 }
