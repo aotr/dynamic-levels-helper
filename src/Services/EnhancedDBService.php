@@ -301,7 +301,7 @@ class EnhancedDBService
 
         // Calculate execution time
         $executionTime = microtime(true) - $startTime;
-        $resultSets = ["data"=>$resultSets];
+        $resultSets = ["data"=>$resultSets,"raw_query"=>$sql,"parameters"=>$parameters];
         // Record successful execution in history
         $executionHistory[] = [
             'attempt' => $attempt + 1,
