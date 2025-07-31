@@ -67,6 +67,7 @@ ENHANCED_DB_SERVICE_CACHE_ENABLED=true
 # Performance Settings
 ENHANCED_DB_SERVICE_SLOW_QUERY_THRESHOLD=2.0
 ENHANCED_DB_SERVICE_ENABLE_PROFILING=false
+ENHANCED_DB_SERVICE_ENABLE_QUERY_TIMEOUT=true
 ```
 
 ## Usage Examples
@@ -390,3 +391,69 @@ $results = $enhancedDb->callStoredProcedure('UpdateUserData', [$params]);
 6. **Reliability**: Automatic retry logic and error recovery
 7. **Developer Experience**: Console commands for monitoring and management
 8. **Backward Compatibility**: Original service remains untouched
+
+## Troubleshooting
+
+### Driver Compatibility Issues
+
+If you encounter errors like "Driver does not support this function: This driver doesn't support setting attributes", this means your PDO driver doesn't support query timeout attributes.
+
+**Solution:**
+Add this to your `.env` file to disable query timeout setting:
+```env
+ENHANCED_DB_SERVICE_ENABLE_QUERY_TIMEOUT=false
+```
+
+**Common scenarios:**
+- **MySQL with older drivers**: Some MySQL PDO drivers don't support `PDO::ATTR_TIMEOUT`
+- **Custom PDO drivers**: Third-party or custom drivers may not implement all PDO attributes
+- **Shared hosting**: Some shared hosting providers use limited PDO implementations
+
+**Alternative timeout methods:**
+- MySQL: The service will automatically use `SET SESSION wait_timeout` instead
+- PostgreSQL: Falls back to connection-level timeouts
+- SQLite: Timeout not needed for stored procedures
+
+### Connection Issues
+
+If you get "server has gone away" or connection timeout errors:
+
+1. **Increase retry attempts**:
+   ```env
+   ENHANCED_DB_SERVICE_RETRY_ATTEMPTS=5
+   ENHANCED_DB_SERVICE_RETRY_DELAY=200
+   ```
+
+2. **Check connection pool settings**:
+   ```env
+   ENHANCED_DB_SERVICE_MAX_CONNECTIONS=5
+   ENHANCED_DB_SERVICE_POOL_TIMEOUT=60
+   ```
+
+3. **Enable detailed logging**:
+   ```env
+   ENHANCED_DB_SERVICE_LOGGING_ENABLED=true
+   ENHANCED_DB_SERVICE_LOG_ERRORS=true
+   ```
+
+### Performance Issues
+
+For slow stored procedures:
+
+1. **Monitor slow queries**:
+   ```env
+   ENHANCED_DB_SERVICE_SLOW_QUERY_THRESHOLD=1.0
+   ENHANCED_DB_SERVICE_ENABLE_PROFILING=true
+   ```
+
+2. **Check performance metrics**:
+   ```php
+   $metrics = EnhancedDBService::getInstance()->getPerformanceMetrics();
+   $poolStats = EnhancedDBService::getInstance()->getConnectionPoolStats();
+   ```
+
+3. **Use console commands**:
+   ```bash
+   php artisan enhanced-db:manage performance
+   php artisan enhanced-db:manage stats
+   ```

@@ -47,6 +47,7 @@ return [
         'performance' => [
             'slow_query_threshold' => env('ENHANCED_DB_SERVICE_SLOW_QUERY_THRESHOLD', 2.0),
             'enable_query_profiling' => env('ENHANCED_DB_SERVICE_ENABLE_PROFILING', true),
+            'enable_query_timeout' => env('ENHANCED_DB_SERVICE_ENABLE_QUERY_TIMEOUT', true),
         ],
     ],
 ];

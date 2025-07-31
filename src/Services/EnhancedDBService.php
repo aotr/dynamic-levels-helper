@@ -114,6 +114,7 @@ class EnhancedDBService
             'performance' => [
                 'slow_query_threshold' => 2.0,
                 'enable_query_profiling' => false,
+                'enable_query_timeout' => true,
             ],
         ];
 
@@ -232,24 +233,44 @@ class EnhancedDBService
         // Log query start
         $this->logQueryStart($queryId, $sql, $parameters, $connection);
 
-        // Execute query with timeout
-        $stmt = $pdo->prepare($sql);
-
-        // Set query timeout if supported
-        if (method_exists($stmt, 'setAttribute')) {
-            $stmt->setAttribute(\PDO::ATTR_TIMEOUT, $options['timeout']);
-        }
-
-        $stmt->execute($parameters);
-
-        // Fetch all result sets
-        $resultSets = [];
-        do {
-            $resultSet = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            if (!empty($resultSet) || empty($resultSets)) {
-                $resultSets[] = $resultSet;
+        try {
+            // Execute query with timeout
+            $stmt = $pdo->prepare($sql);
+            
+            if (!$stmt) {
+                throw new RuntimeException("Failed to prepare statement for stored procedure '{$storedProcedureName}'");
             }
-        } while ($stmt->nextRowset());
+
+            // Set query timeout if enabled and supported by the driver
+            if ($this->config['performance']['enable_query_timeout'] ?? true) {
+                $this->setQueryTimeout($pdo, $stmt, $options['timeout']);
+            }
+
+            $result = $stmt->execute($parameters);
+            
+            if (!$result) {
+                $errorInfo = $stmt->errorInfo();
+                throw new RuntimeException("Failed to execute stored procedure '{$storedProcedureName}': " . ($errorInfo[2] ?? 'Unknown error'));
+            }
+
+            // Fetch all result sets
+            $resultSets = [];
+            do {
+                $resultSet = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                if (!empty($resultSet) || empty($resultSets)) {
+                    $resultSets[] = $resultSet;
+                }
+            } while ($stmt->nextRowset());
+
+        } catch (\PDOException $e) {
+            // Release connection back to pool on error
+            $this->connectionPool->releaseConnection($connection);
+            throw $e;
+        } catch (\Exception $e) {
+            // Release connection back to pool on error
+            $this->connectionPool->releaseConnection($connection);
+            throw $e;
+        }
 
         // Calculate execution time
         $executionTime = microtime(true) - $startTime;
@@ -575,6 +596,89 @@ class EnhancedDBService
     private function shouldLogToQueryLog(): bool
     {
         return $this->config['logging']['log_queries'] ?? true;
+    }
+
+    /**
+     * Set query timeout with driver compatibility checks
+     *
+     * @param \PDO $pdo
+     * @param \PDOStatement $stmt
+     * @param int $timeout
+     * @return void
+     */
+    private function setQueryTimeout(\PDO $pdo, \PDOStatement $stmt, int $timeout): void
+    {
+        try {
+            $driver = $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME);
+            
+            // Only set timeout for drivers that support it
+            switch ($driver) {
+                case 'mysql':
+                    // MySQL supports query timeout through connection options
+                    // Set it on the connection level if not already set
+                    $this->setMySQLTimeout($pdo, $timeout);
+                    break;
+                    
+                case 'pgsql':
+                    // PostgreSQL supports statement timeout
+                    if (method_exists($stmt, 'setAttribute')) {
+                        try {
+                            $stmt->setAttribute(\PDO::ATTR_TIMEOUT, $timeout);
+                        } catch (\PDOException $e) {
+                            // Silently ignore if not supported
+                        }
+                    }
+                    break;
+                    
+                case 'sqlite':
+                    // SQLite doesn't need query timeout for stored procedures
+                    break;
+                    
+                default:
+                    // For other drivers, try to set timeout but catch exceptions
+                    if (method_exists($stmt, 'setAttribute')) {
+                        try {
+                            $stmt->setAttribute(\PDO::ATTR_TIMEOUT, $timeout);
+                        } catch (\PDOException $e) {
+                            // Log warning but don't fail
+                            $this->log('warning', 'Could not set query timeout for driver: ' . $driver, [
+                                'driver' => $driver,
+                                'timeout' => $timeout,
+                                'error' => $e->getMessage()
+                            ]);
+                        }
+                    }
+                    break;
+            }
+        } catch (\Exception $e) {
+            // If we can't determine driver or set timeout, log but continue
+            $this->log('warning', 'Failed to set query timeout', [
+                'timeout' => $timeout,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Set MySQL specific timeout options
+     *
+     * @param \PDO $pdo
+     * @param int $timeout
+     * @return void
+     */
+    private function setMySQLTimeout(\PDO $pdo, int $timeout): void
+    {
+        try {
+            // Set MySQL session timeout variables
+            $pdo->exec("SET SESSION wait_timeout = {$timeout}");
+            $pdo->exec("SET SESSION interactive_timeout = {$timeout}");
+        } catch (\PDOException $e) {
+            // Log warning but don't fail
+            $this->log('warning', 'Could not set MySQL timeout variables', [
+                'timeout' => $timeout,
+                'error' => $e->getMessage()
+            ]);
+        }
     }
 
     /**
