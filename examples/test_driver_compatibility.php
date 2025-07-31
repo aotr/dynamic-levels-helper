@@ -14,7 +14,7 @@ try {
 
     // Test with a simple procedure call
     echo "Testing stored procedure call...\n";
-    
+
     // This should work without the PDO attribute error
     $result = $enhancedDb->callStoredProcedure('STP_VS_API', [], [
         'connection' => 'mysql',
@@ -22,14 +22,14 @@ try {
         'retryAttempts' => 1,
         'enableLogging' => true
     ]);
-    
+
     echo "✓ Stored procedure call completed successfully\n";
     echo "Result: " . (empty($result) ? 'No data returned' : count($result) . ' result set(s)') . "\n";
 
 } catch (Exception $e) {
     echo "✗ Error: " . $e->getMessage() . "\n";
     echo "Error code: " . $e->getCode() . "\n";
-    
+
     // Check if it's still the attribute error
     if (strpos($e->getMessage(), "Driver does not support this function") !== false) {
         echo "\n❌ The PDO attribute error still exists. The driver doesn't support setting timeout attributes.\n";
@@ -49,10 +49,10 @@ try {
     $pdo = DB::connection()->getPdo();
     $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
     $version = $pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
-    
+
     echo "Database Driver: " . $driver . "\n";
     echo "Server Version: " . $version . "\n";
-    
+
     // Test timeout attribute support
     try {
         $stmt = $pdo->prepare("SELECT 1");
@@ -62,7 +62,7 @@ try {
         echo "✗ Driver does NOT support PDO::ATTR_TIMEOUT: " . $e->getMessage() . "\n";
         echo "  This is why the original error occurred.\n";
     }
-    
+
 } catch (Exception $e) {
     echo "Could not get driver information: " . $e->getMessage() . "\n";
 }

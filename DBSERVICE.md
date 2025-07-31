@@ -90,6 +90,9 @@ use Aotr\DynamicLevelHelper\Services\EnhancedDBService;
 // Get singleton instance
 $enhancedDbService = EnhancedDBService::getInstance();
 $results = $enhancedDbService->callStoredProcedure('my_procedure', [1, 'param2']);
+
+// Get detailed execution information
+$executionInfo = $enhancedDbService->callStoredProcedureWithInfo('my_procedure', [1, 'param2']);
 ```
 
 ### Using Enhanced Facade
@@ -112,6 +115,127 @@ $results = $enhancedDbService->callStoredProcedure('my_procedure', [1, 'param2']
     'retryAttempts' => 5,        // Custom retry attempts
     'retryDelay' => 200,         // Base delay in milliseconds
 ]);
+```
+
+### Getting Detailed Execution Information
+
+The `EnhancedDBService` can return comprehensive execution information including timing, connection pool status, retry history, and performance metrics:
+
+```php
+// Method 1: Using dedicated method
+$executionInfo = $enhancedDbService->callStoredProcedureWithInfo('my_procedure', [1, 'param2']);
+
+// Method 2: Using option parameter
+$executionInfo = $enhancedDbService->callStoredProcedure('my_procedure', [1, 'param2'], [
+    'returnExecutionInfo' => true,
+    'retryAttempts' => 3,
+]);
+```
+
+#### Execution Information Structure
+
+```php
+$executionInfo = [
+    'success' => true,
+    'stored_procedure' => 'my_procedure',
+    'parameters' => [1, 'param2'],
+    'connection' => 'mysql',
+    'data' => [...], // Result sets (same as regular call)
+    
+    'execution_summary' => [
+        'total_execution_time' => 0.1245,  // seconds
+        'total_attempts' => 1,
+        'successful_attempts' => 1,
+        'failed_attempts' => 0,
+        'result_sets_count' => 2,
+        'rows_affected' => 150,
+    ],
+    
+    'connection_pool' => [
+        'stats' => [
+            'total_connections' => 3,
+            'active_connections' => 1,
+            'idle_connections' => 2,
+            'pool_size' => 10,
+            // ... more pool statistics
+        ],
+        'connection_used' => 'mysql',
+    ],
+    
+    'performance' => [
+        'is_slow_query' => false,
+        'slow_query_threshold' => 2.0,
+        'procedure_metrics' => [
+            'total_calls' => 15,
+            'avg_time' => 0.1123,
+            'min_time' => 0.0234,
+            'max_time' => 0.5432,
+            'total_result_sets' => 30,
+        ],
+    ],
+    
+    'retry_information' => [
+        'retry_enabled' => true,
+        'max_retry_attempts' => 3,
+        'retry_base_delay' => 100,
+        'execution_history' => [
+            [
+                'attempt' => 1,
+                'execution_time' => 0.1245,
+                'result_sets' => 2,
+                'timestamp' => 1627891234.5678,
+                'success' => true,
+            ],
+            // ... more attempts if retries occurred
+        ],
+    ],
+    
+    'configuration' => [
+        'timeout' => 30,
+        'max_connections' => 10,
+        'logging_enabled' => true,
+        'cache_enabled' => true,
+    ],
+    
+    'timestamp' => [
+        'started_at' => '2023-07-31 14:30:15',
+        'completed_at' => '2023-07-31 14:30:15',
+        'timezone' => 'UTC',
+    ],
+];
+```
+
+#### Using Execution Information
+
+```php
+// Get execution info
+$executionInfo = $enhancedDbService->callStoredProcedureWithInfo('GetUserData', [123]);
+
+// Check if execution was successful
+if ($executionInfo['success']) {
+    $userData = $executionInfo['data'][0]; // First result set
+    $executionTime = $executionInfo['execution_summary']['total_execution_time'];
+    
+    echo "Retrieved user data in {$executionTime}s";
+    
+    // Check performance
+    if ($executionInfo['performance']['is_slow_query']) {
+        echo "Warning: Slow query detected!";
+    }
+    
+    // Check connection pool health
+    $poolStats = $executionInfo['connection_pool']['stats'];
+    if ($poolStats['active_connections'] > $poolStats['pool_size'] * 0.8) {
+        echo "High connection pool usage detected";
+    }
+} else {
+    $error = $executionInfo['error'];
+    echo "Execution failed: " . $error['message'];
+    
+    // Check retry information
+    $retryInfo = $executionInfo['retry_information'];
+    echo "Failed after {$retryInfo['execution_history']} attempts";
+}
 ```
 
 ### Retry Configuration Examples

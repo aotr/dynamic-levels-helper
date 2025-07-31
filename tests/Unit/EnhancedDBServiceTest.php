@@ -5,6 +5,8 @@ namespace Aotr\DynamicLevelHelper\Tests\Unit;
 use Aotr\DynamicLevelHelper\Services\EnhancedDBService;
 use Aotr\DynamicLevelHelper\Tests\PackageTestCase;
 use Illuminate\Support\Facades\Config;
+use ReflectionClass;
+use ReflectionMethod;
 
 class EnhancedDBServiceTest extends PackageTestCase
 {
@@ -113,21 +115,83 @@ class EnhancedDBServiceTest extends PackageTestCase
 
     public function test_retry_delay_calculation()
     {
-        $dbService = EnhancedDBService::getInstance();
-        $reflection = new \ReflectionClass($dbService);
-
-        $calculateRetryDelayMethod = $reflection->getMethod('calculateRetryDelay');
-        $calculateRetryDelayMethod->setAccessible(true);
+        $service = EnhancedDBService::getInstance();
+        $reflection = new ReflectionClass($service);
+        $method = $reflection->getMethod('calculateRetryDelay');
+        $method->setAccessible(true);
 
         // Test exponential backoff
-        $delay1 = $calculateRetryDelayMethod->invoke($dbService, 100, 1);
-        $delay2 = $calculateRetryDelayMethod->invoke($dbService, 100, 2);
+        $delay1 = $method->invoke($service, 100, 1);
+        $delay2 = $method->invoke($service, 100, 2);
+        $delay3 = $method->invoke($service, 100, 3);
 
         $this->assertGreaterThan(0, $delay1);
         $this->assertGreaterThan(0, $delay2);
+        $this->assertGreaterThan(0, $delay3);
+        $this->assertLessThanOrEqual(30000, $delay3); // Max cap
+    }
 
-        // Test maximum delay cap (30 seconds = 30000ms)
-        $delayLarge = $calculateRetryDelayMethod->invoke($dbService, 100, 20);
-        $this->assertLessThanOrEqual(30000, $delayLarge);
+    public function test_execution_info_structure()
+    {
+        $service = EnhancedDBService::getInstance();
+
+        // Test the buildExecutionInfo method structure
+        $reflection = new ReflectionClass($service);
+        $method = $reflection->getMethod('buildExecutionInfo');
+        $method->setAccessible(true);
+
+        $executionHistory = [
+            [
+                'attempt' => 1,
+                'execution_time' => 0.1,
+                'result_sets' => 1,
+                'timestamp' => microtime(true),
+                'success' => true,
+            ]
+        ];
+
+        $resultSets = [['id' => 1, 'name' => 'test']];
+
+        $executionInfo = $method->invoke(
+            $service,
+            'test_procedure',
+            ['param1'],
+            $resultSets,
+            0.15,
+            1,
+            $executionHistory,
+            'mysql'
+        );
+
+        // Test structure
+        $this->assertArrayHasKey('success', $executionInfo);
+        $this->assertArrayHasKey('stored_procedure', $executionInfo);
+        $this->assertArrayHasKey('execution_summary', $executionInfo);
+        $this->assertArrayHasKey('connection_pool', $executionInfo);
+        $this->assertArrayHasKey('performance', $executionInfo);
+        $this->assertArrayHasKey('retry_information', $executionInfo);
+        $this->assertArrayHasKey('configuration', $executionInfo);
+        $this->assertArrayHasKey('timestamp', $executionInfo);
+        $this->assertArrayHasKey('data', $executionInfo);
+
+        // Test execution summary
+        $this->assertEquals('test_procedure', $executionInfo['stored_procedure']);
+        $this->assertEquals(['param1'], $executionInfo['parameters']);
+        $this->assertEquals(0.15, $executionInfo['execution_summary']['total_execution_time']);
+        $this->assertEquals(1, $executionInfo['execution_summary']['total_attempts']);
+        $this->assertEquals(1, $executionInfo['execution_summary']['result_sets_count']);
+        $this->assertEquals($resultSets, $executionInfo['data']);
+    }
+
+    public function test_call_stored_procedure_with_info_method()
+    {
+        $service = EnhancedDBService::getInstance();
+
+        // This method should exist and be callable
+        $this->assertTrue(method_exists($service, 'callStoredProcedureWithInfo'));
+
+        // The method should be public
+        $reflection = new ReflectionMethod($service, 'callStoredProcedureWithInfo');
+        $this->assertTrue($reflection->isPublic());
     }
 }

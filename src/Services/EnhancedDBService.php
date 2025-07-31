@@ -143,7 +143,8 @@ class EnhancedDBService
      *   - `timeout` (int): Query timeout in seconds
      *   - `retryAttempts` (int): Number of retry attempts for transient failures
      *   - `retryDelay` (int): Base delay between retries in milliseconds
-     * @return array An array of result sets
+     *   - `returnExecutionInfo` (bool): Whether to return execution metadata (default: false)
+     * @return array An array of result sets, or execution info if returnExecutionInfo is true
      * @throws RuntimeException If execution fails after all retries
      */
     public function callStoredProcedure(string $storedProcedureName, array $parameters = [], array $options = []): array
@@ -155,22 +156,42 @@ class EnhancedDBService
             'timeout' => 30,
             'retryAttempts' => null, // Use config default if not specified
             'retryDelay' => 100, // milliseconds
+            'returnExecutionInfo' => false, // New option to return execution metadata
         ], $options);
 
         $connection = $options['connection'];
         $retryAttempts = $options['retryAttempts'] ?? $this->config['connection_pool']['retry_attempts'];
         $retryDelay = $options['retryDelay'];
+        $returnExecutionInfo = $options['returnExecutionInfo'];
 
         $attempt = 0;
         $lastException = null;
+        $totalStartTime = microtime(true);
+        $executionHistory = [];
 
         while ($attempt <= $retryAttempts) {
             try {
-                return $this->executeStoredProcedure($storedProcedureName, $parameters, $options, $attempt);
+                $result = $this->executeStoredProcedure($storedProcedureName, $parameters, $options, $attempt, $executionHistory);
+
+                if ($returnExecutionInfo) {
+                    $totalExecutionTime = microtime(true) - $totalStartTime;
+                    return $this->buildExecutionInfo($storedProcedureName, $parameters, $result, $totalExecutionTime, $attempt, $executionHistory, $connection);
+                }
+
+                return $result;
 
             } catch (Exception $e) {
                 $lastException = $e;
                 $attempt++;
+
+                // Record this attempt in execution history
+                $executionHistory[] = [
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage(),
+                    'error_code' => $e->getCode(),
+                    'retryable' => $this->isRetryableError($e),
+                    'timestamp' => microtime(true),
+                ];
 
                 // Check if this is a retryable error
                 if ($attempt <= $retryAttempts && $this->isRetryableError($e)) {
@@ -194,8 +215,13 @@ class EnhancedDBService
         }
 
         // All retries failed
+        $totalExecutionTime = microtime(true) - $totalStartTime;
         $errorMessage = "Database error in stored procedure '{$storedProcedureName}' after {$attempt} attempts: {$lastException->getMessage()}";
         $this->logError($errorMessage, $storedProcedureName, $parameters, '', $connection, $lastException);
+
+        if ($returnExecutionInfo) {
+            return $this->buildExecutionInfo($storedProcedureName, $parameters, null, $totalExecutionTime, $attempt, $executionHistory, $connection, $lastException);
+        }
 
         throw new RuntimeException($errorMessage, 0, $lastException);
     }
@@ -207,10 +233,11 @@ class EnhancedDBService
      * @param array $parameters
      * @param array $options
      * @param int $attempt
+     * @param array &$executionHistory
      * @return array
      * @throws Exception
      */
-    private function executeStoredProcedure(string $storedProcedureName, array $parameters, array $options, int $attempt): array
+    private function executeStoredProcedure(string $storedProcedureName, array $parameters, array $options, int $attempt, array &$executionHistory = []): array
     {
         $connection = $options['connection'];
         $startTime = microtime(true);
@@ -236,7 +263,7 @@ class EnhancedDBService
         try {
             // Execute query with timeout
             $stmt = $pdo->prepare($sql);
-            
+
             if (!$stmt) {
                 throw new RuntimeException("Failed to prepare statement for stored procedure '{$storedProcedureName}'");
             }
@@ -247,7 +274,7 @@ class EnhancedDBService
             }
 
             $result = $stmt->execute($parameters);
-            
+
             if (!$result) {
                 $errorInfo = $stmt->errorInfo();
                 throw new RuntimeException("Failed to execute stored procedure '{$storedProcedureName}': " . ($errorInfo[2] ?? 'Unknown error'));
@@ -275,6 +302,15 @@ class EnhancedDBService
         // Calculate execution time
         $executionTime = microtime(true) - $startTime;
 
+        // Record successful execution in history
+        $executionHistory[] = [
+            'attempt' => $attempt + 1,
+            'execution_time' => $executionTime,
+            'result_sets' => count($resultSets),
+            'timestamp' => microtime(true),
+            'success' => true,
+        ];
+
         // Release connection back to pool
         $this->connectionPool->releaseConnection($connection);
 
@@ -295,6 +331,106 @@ class EnhancedDBService
         }
 
         return $resultSets;
+    }
+
+    /**
+     * Build comprehensive execution information
+     *
+     * @param string $storedProcedureName
+     * @param array $parameters
+     * @param array|null $resultSets
+     * @param float $totalExecutionTime
+     * @param int $totalAttempts
+     * @param array $executionHistory
+     * @param string $connection
+     * @param Exception|null $finalException
+     * @return array
+     */
+    private function buildExecutionInfo(string $storedProcedureName, array $parameters, ?array $resultSets, float $totalExecutionTime, int $totalAttempts, array $executionHistory, string $connection, ?Exception $finalException = null): array
+    {
+        // Get current pool stats
+        $poolStats = $this->getConnectionPoolStats();
+
+        // Get procedure performance metrics
+        $procedureMetrics = $this->performanceMetrics[$storedProcedureName] ?? null;
+
+        // Calculate execution statistics
+        $successfulAttempts = array_filter($executionHistory, fn($h) => $h['success'] ?? false);
+        $failedAttempts = array_filter($executionHistory, fn($h) => !($h['success'] ?? false));
+
+        $executionInfo = [
+            'success' => $finalException === null,
+            'stored_procedure' => $storedProcedureName,
+            'parameters' => $parameters,
+            'connection' => $connection,
+            'execution_summary' => [
+                'total_execution_time' => round($totalExecutionTime, 4),
+                'total_attempts' => $totalAttempts,
+                'successful_attempts' => count($successfulAttempts),
+                'failed_attempts' => count($failedAttempts),
+                'result_sets_count' => $resultSets ? count($resultSets) : 0,
+                'rows_affected' => $resultSets ? array_sum(array_map('count', $resultSets)) : 0,
+            ],
+            'connection_pool' => [
+                'stats' => $poolStats,
+                'connection_used' => $connection,
+            ],
+            'performance' => [
+                'is_slow_query' => $totalExecutionTime > $this->config['performance']['slow_query_threshold'],
+                'slow_query_threshold' => $this->config['performance']['slow_query_threshold'],
+                'procedure_metrics' => $procedureMetrics,
+            ],
+            'retry_information' => [
+                'retry_enabled' => $totalAttempts > 0,
+                'max_retry_attempts' => $this->config['connection_pool']['retry_attempts'],
+                'retry_base_delay' => $this->config['connection_pool']['retry_delay'],
+                'execution_history' => $executionHistory,
+            ],
+            'configuration' => [
+                'timeout' => $this->config['connection_pool']['pool_timeout'],
+                'max_connections' => $this->config['connection_pool']['max_connections'],
+                'logging_enabled' => $this->config['logging']['enabled'],
+                'cache_enabled' => $this->config['cache']['enabled'],
+            ],
+            'timestamp' => [
+                'started_at' => date('Y-m-d H:i:s', time() - $totalExecutionTime),
+                'completed_at' => date('Y-m-d H:i:s'),
+                'timezone' => date_default_timezone_get(),
+            ],
+        ];
+
+        // Add result data if successful
+        if ($resultSets !== null) {
+            $executionInfo['data'] = $resultSets;
+        }
+
+        // Add error information if failed
+        if ($finalException !== null) {
+            $executionInfo['error'] = [
+                'message' => $finalException->getMessage(),
+                'code' => $finalException->getCode(),
+                'type' => get_class($finalException),
+                'retryable' => $this->isRetryableError($finalException),
+                'connection_error' => $this->isConnectionError($finalException),
+            ];
+        }
+
+        return $executionInfo;
+    }
+
+    /**
+     * Call stored procedure and return detailed execution information
+     *
+     * @param string $storedProcedureName
+     * @param array $parameters
+     * @param array $options
+     * @return array Detailed execution information including results, timing, pool stats, etc.
+     * @throws RuntimeException
+     */
+    public function callStoredProcedureWithInfo(string $storedProcedureName, array $parameters = [], array $options = []): array
+    {
+        $options['returnExecutionInfo'] = true;
+        return $this->callStoredProcedure($storedProcedureName, $parameters, $options);
     }
 
     /**
@@ -610,7 +746,7 @@ class EnhancedDBService
     {
         try {
             $driver = $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME);
-            
+
             // Only set timeout for drivers that support it
             switch ($driver) {
                 case 'mysql':
@@ -618,7 +754,7 @@ class EnhancedDBService
                     // Set it on the connection level if not already set
                     $this->setMySQLTimeout($pdo, $timeout);
                     break;
-                    
+
                 case 'pgsql':
                     // PostgreSQL supports statement timeout
                     if (method_exists($stmt, 'setAttribute')) {
@@ -629,11 +765,11 @@ class EnhancedDBService
                         }
                     }
                     break;
-                    
+
                 case 'sqlite':
                     // SQLite doesn't need query timeout for stored procedures
                     break;
-                    
+
                 default:
                     // For other drivers, try to set timeout but catch exceptions
                     if (method_exists($stmt, 'setAttribute')) {
