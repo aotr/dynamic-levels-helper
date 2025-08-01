@@ -301,13 +301,17 @@ class EnhancedDBService
 
         // Calculate execution time
         $executionTime = microtime(true) - $startTime;
-        
+
         // Store original result sets count before wrapping
         $originalResultCount = is_array($resultSets) ? count($resultSets) : 0;
-        
+
         // Wrap result sets with additional metadata
-        $resultSets = ["data"=>$resultSets,"raw_query"=>$sql,"parameters"=>$parameters];
-        
+        $resultSets = [
+            "data"=>$resultSets,
+            "raw_query"=>$sql,
+            "parameters"=>$parameters
+        ];
+
         // Record successful execution in history
         $executionHistory[] = [
             'attempt' => $attempt + 1,
@@ -432,7 +436,7 @@ class EnhancedDBService
         // Add result data if successful
         if ($resultData !== null) {
             $executionInfo['data'] = $resultData;
-            
+
             // Add raw query and parameters if available from new format
             if ($resultSets && is_array($resultSets)) {
                 if (isset($resultSets['raw_query'])) {
@@ -787,7 +791,7 @@ class EnhancedDBService
             Log::channel($channel)->{$level}($message, $context);
         } catch (\Exception $e) {
             // Fall back to error_log if Laravel logging fails
-            $logMessage = sprintf('[%s] %s %s (Laravel logging failed: %s)', 
+            $logMessage = sprintf('[%s] %s %s (Laravel logging failed: %s)',
                 strtoupper($level), $message, json_encode($context), $e->getMessage());
             error_log($logMessage);
         }
@@ -1093,7 +1097,7 @@ class EnhancedDBService
         } catch (\Exception $e) {
             // Fall back if Laravel helpers fail
         }
-        
+
         // Use standard PHP date formatting
         return date('Y-m-d\TH:i:s.v\Z');
     }
@@ -1113,7 +1117,7 @@ class EnhancedDBService
         } catch (\Exception $e) {
             // Fall back if Laravel helpers fail
         }
-        
+
         // Try PHP session
         try {
             if (session_status() === PHP_SESSION_ACTIVE) {
@@ -1122,7 +1126,7 @@ class EnhancedDBService
         } catch (\Exception $e) {
             // Ignore session errors
         }
-        
+
         return 'N/A';
     }
 
@@ -1141,7 +1145,7 @@ class EnhancedDBService
         } catch (\Exception $e) {
             // Fall back if Laravel helpers fail
         }
-        
+
         // Try standard PHP methods
         try {
             if (isset($_SERVER['HTTP_CLIENT_IP'])) {
@@ -1154,7 +1158,7 @@ class EnhancedDBService
         } catch (\Exception $e) {
             // Ignore server variable errors
         }
-        
+
         return 'N/A';
     }
 
