@@ -48,6 +48,36 @@ class EnhancedDBService
     private array $performanceMetrics = [];
 
     /**
+     * @var string|null Cached logging channel
+     */
+    private ?string $logChannel = null;
+
+    /**
+     * @var bool Cached Laravel facade availability
+     */
+    private bool $laravelAvailable = false;
+
+    /**
+     * @var bool Facade availability checked
+     */
+    private bool $facadeChecked = false;
+
+    /**
+     * @var array Cached SQL templates to avoid repeated string building
+     */
+    private array $sqlCache = [];
+
+    /**
+     * @var bool Whether Laravel config function is available
+     */
+    private static bool $laravelConfigAvailable;
+
+    /**
+     * @var bool Whether helper functions are available
+     */
+    private static bool $laravelHelpersAvailable;
+
+    /**
      * Private constructor to prevent direct instantiation
      */
     private function __construct()
@@ -85,7 +115,7 @@ class EnhancedDBService
     }
 
     /**
-     * Load configuration from Laravel config
+     * Load configuration from Laravel config (optimized)
      *
      * @return void
      */
@@ -118,17 +148,21 @@ class EnhancedDBService
             ],
         ];
 
-        try {
-            // Try to load from Laravel config if available
-            if (function_exists('config')) {
-                $this->config = config('dynamic-levels-helper.enhanced_db_service', $defaultConfig);
-            } else {
-                $this->config = $defaultConfig;
-            }
-        } catch (\Exception $e) {
-            // Fall back to default config if Laravel config is not available
-            $this->config = $defaultConfig;
+        // Check Laravel config availability once per class
+        if (!isset(self::$laravelConfigAvailable)) {
+            self::$laravelConfigAvailable = function_exists('config');
         }
+
+        if (self::$laravelConfigAvailable) {
+            try {
+                $this->config = config('dynamic-levels-helper.enhanced_db_service', $defaultConfig);
+                return;
+            } catch (\Throwable $e) {
+                // Fall through to default config
+            }
+        }
+
+        $this->config = $defaultConfig;
     }
 
     /**
@@ -243,16 +277,23 @@ class EnhancedDBService
         $startTime = microtime(true);
         $queryId = $this->generateQueryId() . "_attempt_{$attempt}";
 
-        // Check stored procedure existence if required
-        if ($options['checkStoredProcedure'] && !$this->checkStoredProcedure($storedProcedureName, $connection)) {
+        // Check stored procedure existence if required (optimized check)
+        if (isset($options['checkStoredProcedure']) && $options['checkStoredProcedure'] && !$this->checkStoredProcedure($storedProcedureName, $connection)) {
             $errorMessage = "Stored Procedure '{$storedProcedureName}' does not exist";
             $this->logError($errorMessage, $storedProcedureName, $parameters, '', $connection);
             throw new RuntimeException($errorMessage);
         }
 
-        // Prepare SQL
-        $placeholders = implode(',', array_fill(0, count($parameters), '?'));
-        $sql = "CALL {$storedProcedureName}({$placeholders})";
+        // Prepare SQL (cached to avoid repeated string operations)
+        $paramCount = count($parameters);
+        $cacheKey = $storedProcedureName . '_' . $paramCount;
+
+        if (!isset($this->sqlCache[$cacheKey])) {
+            $placeholders = $paramCount > 0 ? str_repeat('?,', $paramCount - 1) . '?' : '';
+            $this->sqlCache[$cacheKey] = "CALL {$storedProcedureName}({$placeholders})";
+        }
+
+        $sql = $this->sqlCache[$cacheKey];
 
         // Get connection from pool
         $pdo = $this->connectionPool->getConnection($connection);
@@ -268,8 +309,9 @@ class EnhancedDBService
                 throw new RuntimeException("Failed to prepare statement for stored procedure '{$storedProcedureName}'");
             }
 
-            // Set query timeout if enabled and supported by the driver
-            if ($this->config['performance']['enable_query_timeout'] ?? true) {
+            // Set query timeout if enabled and supported by the driver (optimized check)
+            $enableTimeout = $this->config['performance']['enable_query_timeout'] ?? true;
+            if ($enableTimeout) {
                 $this->setQueryTimeout($pdo, $stmt, $options['timeout']);
             }
 
@@ -324,8 +366,8 @@ class EnhancedDBService
         // Release connection back to pool
         $this->connectionPool->releaseConnection($connection);
 
-        // Log successful execution - count the actual data array, not the wrapper
-        $resultCount = isset($resultSets['data']) && is_array($resultSets['data']) ? count($resultSets['data']) : 0;
+        // Log successful execution - count the actual data array, not the wrapper (optimized)
+        $resultCount = (isset($resultSets['data']) && is_array($resultSets['data'])) ? count($resultSets['data']) : 0;
         $this->logQueryComplete($queryId, $sql, $parameters, $executionTime, $connection, $resultCount);
 
         // Check for slow queries
@@ -365,11 +407,18 @@ class EnhancedDBService
         // Get procedure performance metrics
         $procedureMetrics = $this->performanceMetrics[$storedProcedureName] ?? null;
 
-        // Calculate execution statistics
-        $successfulAttempts = array_filter($executionHistory, fn($h) => $h['success'] ?? false);
-        $failedAttempts = array_filter($executionHistory, fn($h) => !($h['success'] ?? false));
+        // Calculate execution statistics (optimized)
+        $successfulAttempts = 0;
+        $failedAttempts = 0;
+        foreach ($executionHistory as $h) {
+            if ($h['success'] ?? false) {
+                $successfulAttempts++;
+            } else {
+                $failedAttempts++;
+            }
+        }
 
-        // Safely extract result data and calculate counts
+        // Safely extract result data and calculate counts (optimized)
         $resultData = null;
         $resultSetsCount = 0;
         $rowsAffected = 0;
@@ -379,16 +428,22 @@ class EnhancedDBService
                 // New format: {data: [...], raw_query: "...", parameters: [...]}
                 $resultData = $resultSets['data'];
                 $resultSetsCount = count($resultData);
-                $rowsAffected = array_sum(array_map(function($set) {
-                    return is_array($set) ? count($set) : 0;
-                }, $resultData));
+                // Fast row counting without array_map
+                foreach ($resultData as $set) {
+                    if (is_array($set)) {
+                        $rowsAffected += count($set);
+                    }
+                }
             } else {
                 // Old format: direct array of result sets
                 $resultData = $resultSets;
                 $resultSetsCount = count($resultSets);
-                $rowsAffected = array_sum(array_map(function($set) {
-                    return is_array($set) ? count($set) : 0;
-                }, $resultSets));
+                // Fast row counting without array_map
+                foreach ($resultSets as $set) {
+                    if (is_array($set)) {
+                        $rowsAffected += count($set);
+                    }
+                }
             }
         }
 
@@ -400,8 +455,8 @@ class EnhancedDBService
             'execution_summary' => [
                 'total_execution_time' => round($totalExecutionTime, 4),
                 'total_attempts' => $totalAttempts,
-                'successful_attempts' => count($successfulAttempts),
-                'failed_attempts' => count($failedAttempts),
+                'successful_attempts' => $successfulAttempts,
+                'failed_attempts' => $failedAttempts,
                 'result_sets_count' => $resultSetsCount,
                 'rows_affected' => $rowsAffected,
             ],
@@ -444,6 +499,21 @@ class EnhancedDBService
                 }
                 if (isset($resultSets['parameters'])) {
                     $executionInfo['query_parameters'] = $resultSets['parameters'];
+                }
+
+                // Prepare a human-readable final SQL for logging/debugging only
+                try {
+                    $paramsForPrepare = is_array($resultSets['parameters']) ? $resultSets['parameters'] : [];
+                    $finalSql = $this->prepareQuery((string)$resultSets['raw_query'], $paramsForPrepare);
+                    $executionInfo['final_sql'] = $finalSql;
+                } catch (\Throwable $t) {
+                    // If prepareQuery fails, don't break execution; log and continue
+                    $this->log('warning', 'Failed to prepare final SQL for logging', [
+                        'error' => $t->getMessage(),
+                        'raw_query' => $resultSets['raw_query'] ?? null,
+                        'parameters' => $resultSets['parameters'] ?? null,
+                    ]);
+                    $executionInfo['final_sql'] = null;
                 }
             }
         } else {
@@ -584,7 +654,7 @@ class EnhancedDBService
     }
 
     /**
-     * Record performance metrics
+     * Record performance metrics (optimized)
      *
      * @param string $procedureName
      * @param float $executionTime
@@ -593,17 +663,18 @@ class EnhancedDBService
      */
     private function recordPerformanceMetrics(string $procedureName, float $executionTime, int $resultSets): void
     {
-        if (!$this->config['performance']['enable_query_profiling']) {
+        $enableProfiling = $this->config['performance']['enable_query_profiling'] ?? false;
+        if (!$enableProfiling) {
             return;
         }
 
         if (!isset($this->performanceMetrics[$procedureName])) {
             $this->performanceMetrics[$procedureName] = [
                 'total_calls' => 0,
-                'total_time' => 0,
-                'avg_time' => 0,
+                'total_time' => 0.0,
+                'avg_time' => 0.0,
                 'min_time' => PHP_FLOAT_MAX,
-                'max_time' => 0,
+                'max_time' => 0.0,
                 'total_result_sets' => 0,
             ];
         }
@@ -618,7 +689,7 @@ class EnhancedDBService
     }
 
     /**
-     * Log query start
+     * Log query start (optimized)
      *
      * @param string $queryId
      * @param string $sql
@@ -628,7 +699,12 @@ class EnhancedDBService
      */
     private function logQueryStart(string $queryId, string $sql, array $parameters, string $connection): void
     {
-        if (!$this->shouldLog() || !$this->config['logging']['log_queries']) {
+        if (!$this->shouldLog()) {
+            return;
+        }
+
+        $logQueries = $this->config['logging']['log_queries'] ?? true;
+        if (!$logQueries) {
             return;
         }
 
@@ -642,7 +718,7 @@ class EnhancedDBService
     }
 
     /**
-     * Log query completion
+     * Log query completion (optimized)
      *
      * @param string $queryId
      * @param string $sql
@@ -654,7 +730,12 @@ class EnhancedDBService
      */
     private function logQueryComplete(string $queryId, string $sql, array $parameters, float $executionTime, string $connection, int $resultSets): void
     {
-        if (!$this->shouldLog() || !$this->config['logging']['log_execution_time']) {
+        if (!$this->shouldLog()) {
+            return;
+        }
+
+        $logExecutionTime = $this->config['logging']['log_execution_time'] ?? true;
+        if (!$logExecutionTime) {
             return;
         }
 
@@ -724,7 +805,7 @@ class EnhancedDBService
     }
 
     /**
-     * Log error messages
+     * Log error messages (optimized)
      *
      * @param string $message
      * @param string $storedProcedureName
@@ -736,7 +817,12 @@ class EnhancedDBService
      */
     private function logError(string $message, string $storedProcedureName, array $parameters, string $sql = '', string $connection = '', Exception $exception = null): void
     {
-        if (!$this->shouldLog() || !$this->config['logging']['log_errors']) {
+        if (!$this->shouldLog()) {
+            return;
+        }
+
+        $logErrors = $this->config['logging']['log_errors'] ?? true;
+        if (!$logErrors) {
             return;
         }
 
@@ -752,7 +838,7 @@ class EnhancedDBService
             'timestamp' => $this->getTimestamp(),
         ];
 
-        if ($exception) {
+        if ($exception !== null) {
             $context['exception'] = [
                 'message' => $exception->getMessage(),
                 'code' => $exception->getCode(),
@@ -766,7 +852,7 @@ class EnhancedDBService
     }
 
     /**
-     * Generic logging method
+     * Generic logging method (optimized)
      *
      * @param string $level
      * @param string $message
@@ -779,42 +865,53 @@ class EnhancedDBService
             return;
         }
 
-        try {
-            if (!class_exists('\Illuminate\Support\Facades\Log')) {
-                // Fall back to error_log if Laravel Log facade is not available
-                $logMessage = sprintf('[%s] %s %s', strtoupper($level), $message, json_encode($context));
-                error_log($logMessage);
-                return;
-            }
-
-            $channel = $this->config['logging']['channel'] ?? 'single';
-            Log::channel($channel)->{$level}($message, $context);
-        } catch (\Exception $e) {
-            // Fall back to error_log if Laravel logging fails
-            $logMessage = sprintf('[%s] %s %s (Laravel logging failed: %s)',
-                strtoupper($level), $message, json_encode($context), $e->getMessage());
-            error_log($logMessage);
+        // Check Laravel facade availability once
+        if (!$this->facadeChecked) {
+            $this->laravelAvailable = class_exists('\Illuminate\Support\Facades\Log');
+            $this->facadeChecked = true;
         }
-    }
+
+        if (!$this->laravelAvailable) {
+            // Fast path for non-Laravel environments
+            error_log(sprintf('[%s] %s %s', strtoupper($level), $message, json_encode($context, JSON_UNESCAPED_SLASHES)));
+            return;
+        }
+
+        try {
+            $channel = $this->logChannel ??= $this->config['logging']['channel'] ?? 'single';
+            Log::channel($channel)->{$level}($message, $context);
+        } catch (\Throwable $e) {
+            // Fast fallback without expensive sprintf
+            error_log("[{$level}] {$message} " . json_encode($context, JSON_UNESCAPED_SLASHES) . " (Laravel logging failed: {$e->getMessage()})");
+        }
+    }    /**
+     * @var bool|null Cached logging status
+     */
+    private ?bool $loggingEnabled = null;
 
     /**
-     * Check if logging is enabled
+     * @var bool|null Cached query logging status
+     */
+    private ?bool $queryLoggingEnabled = null;
+
+    /**
+     * Check if logging is enabled (cached)
      *
      * @return bool
      */
     private function shouldLog(): bool
     {
-        return $this->config['logging']['enabled'] ?? true;
+        return $this->loggingEnabled ??= $this->config['logging']['enabled'] ?? true;
     }
 
     /**
-     * Check if should log to Laravel query log
+     * Check if should log to Laravel query log (cached)
      *
      * @return bool
      */
     private function shouldLogToQueryLog(): bool
     {
-        return $this->config['logging']['log_queries'] ?? true;
+        return $this->queryLoggingEnabled ??= $this->config['logging']['log_queries'] ?? true;
     }
 
     /**
@@ -1083,19 +1180,23 @@ class EnhancedDBService
     }
 
     /**
-     * Get safe timestamp string
+     * Get safe timestamp string (optimized)
      *
      * @return string
      */
     private function getTimestamp(): string
     {
-        try {
-            // Try to use Laravel's now() helper if available
-            if (function_exists('now')) {
+        // Check Laravel helpers availability once per class
+        if (!isset(self::$laravelHelpersAvailable)) {
+            self::$laravelHelpersAvailable = function_exists('now');
+        }
+
+        if (self::$laravelHelpersAvailable) {
+            try {
                 return now()->toISOString();
+            } catch (\Throwable $e) {
+                // Fall through to PHP date
             }
-        } catch (\Exception $e) {
-            // Fall back if Laravel helpers fail
         }
 
         // Use standard PHP date formatting
@@ -1185,5 +1286,50 @@ class EnhancedDBService
                 'connection' => $connection
             ]);
         }
+    }
+
+    /**
+     * Replace ? placeholders in a raw SQL string with provided parameters (optimized).
+     * WARNING: Use only for logging/debugging. Do NOT use this to build queries for execution — use prepared statements instead.
+     *
+     * @param string $rawQuery   Raw SQL with ? placeholders, e.g. "CALL STP_VS_API(?,?,?,?,?,?,?)"
+     * @param array  $params     Array of parameters in order.
+     * @return string            Final query with parameters inserted and safely escaped.
+     * @throws \InvalidArgumentException if placeholder count doesn't match params count.
+     */
+    private function prepareQuery(string $rawQuery, array $params): string
+    {
+        // Early return for queries without parameters
+        if (empty($params)) {
+            return $rawQuery;
+        }
+
+        // Split by ? placeholders. Preserve surrounding text.
+        $parts = explode('?', $rawQuery);
+        $placeholders = count($parts) - 1;
+
+        if ($placeholders !== count($params)) {
+            throw new \InvalidArgumentException("Placeholder count ({$placeholders}) does not match parameter count (" . count($params) . ').');
+        }
+
+        // Pre-allocate result array for better performance
+        $resultParts = [$parts[0]];
+
+        foreach ($params as $index => $param) {
+            if ($param === null) {
+                $resultParts[] = 'NULL';
+            } elseif (is_bool($param)) {
+                $resultParts[] = $param ? '1' : '0';
+            } elseif (is_numeric($param)) {
+                // Keep numeric values unquoted (int, float, numeric strings)
+                $resultParts[] = (string)$param;
+            } else {
+                // Escape single quotes by doubling them for SQL
+                $resultParts[] = "'" . str_replace("'", "''", (string)$param) . "'";
+            }
+            $resultParts[] = $parts[$index + 1];
+        }
+
+        return implode('', $resultParts);
     }
 }
