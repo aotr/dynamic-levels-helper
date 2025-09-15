@@ -493,7 +493,11 @@ class EnhancedDBService
             $executionInfo['data'] = $resultData;
 
             // Add raw query and parameters if available from new format
-            if ($resultSets && is_array($resultSets)) {
+
+        } else {
+            $executionInfo['data'] = [];
+        }
+        if ($resultSets && is_array($resultSets)) {
                 if (isset($resultSets['raw_query'])) {
                     $executionInfo['raw_query'] = $resultSets['raw_query'];
                 }
@@ -521,10 +525,6 @@ class EnhancedDBService
                     $executionInfo['final_sql'] = null;
                 }
             }
-        } else {
-            $executionInfo['data'] = [];
-        }
-
         // Add error information if failed
         if ($finalException !== null) {
             $executionInfo['error'] = [
