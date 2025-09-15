@@ -503,9 +503,14 @@ class EnhancedDBService
 
                 // Prepare a human-readable final SQL for logging/debugging only
                 try {
-                    $paramsForPrepare = is_array($resultSets['parameters']) ? $resultSets['parameters'] : [];
-                    $finalSql = $this->prepareQuery((string)$resultSets['raw_query'], $paramsForPrepare);
-                    $executionInfo['final_sql'] = $finalSql;
+                    $paramsForPrepare = isset($resultSets['parameters']) && is_array($resultSets['parameters'])
+                        ? $resultSets['parameters']
+                        : [];
+                    $rawQuery = $resultSets['raw_query'] ?? '';
+                    if ($rawQuery) {
+                        $finalSql = $this->prepareQuery((string)$rawQuery, $paramsForPrepare);
+                        $executionInfo['final_sql'] = $finalSql;
+                    }
                 } catch (\Throwable $t) {
                     // If prepareQuery fails, don't break execution; log and continue
                     $this->log('warning', 'Failed to prepare final SQL for logging', [
