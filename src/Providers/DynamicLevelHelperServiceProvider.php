@@ -6,6 +6,7 @@ namespace Aotr\DynamicLevelHelper\Providers;
 
 use Aotr\DynamicLevelHelper\Console\Commands\DynamicLevelsMakeCommand;
 use Aotr\DynamicLevelHelper\Console\Commands\EnhancedDBServiceCommand;
+use Aotr\DynamicLevelHelper\Console\Commands\SyncCountriesAndStatesJsonFilesCommand;
 use Aotr\DynamicLevelHelper\DynamicHelpersLoader;
 use Aotr\DynamicLevelHelper\Macros\ResponseMacros;
 use Aotr\DynamicLevelHelper\Middleware\BasicAuth;
@@ -81,6 +82,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             $this->commands([
                 DynamicLevelsMakeCommand::class,
                 EnhancedDBServiceCommand::class,
+                SyncCountriesAndStatesJsonFilesCommand::class,
             ]);
         }
     }
@@ -107,6 +109,10 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
 
         $this->app->singleton('parameter-service', function () {
             return new \Aotr\DynamicLevelHelper\Services\ParameterService();
+        });
+
+        $this->app->singleton('geo-data-service', function () {
+            return new \Aotr\DynamicLevelHelper\Services\GeoDataService();
         });
     }
 

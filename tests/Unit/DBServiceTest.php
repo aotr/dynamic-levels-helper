@@ -2,12 +2,12 @@
 
 namespace Aotr\DynamicLevelHelper\Tests\Unit;
 
-use Aotr\DynamicLevelHelper\Services\EnhancedDBService;
+use Aotr\DynamicLevelHelper\Services\DBService;
 use Aotr\DynamicLevelHelper\Tests\PackageTestCase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 
-class EnhancedDBServiceTest extends PackageTestCase
+class DBServiceTest extends PackageTestCase
 {
     protected function setUp(): void
     {
