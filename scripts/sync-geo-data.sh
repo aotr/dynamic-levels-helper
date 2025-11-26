@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # =============================================================================
 # Geo Data Sync Script
@@ -45,29 +45,51 @@ ONLY_FILES=""
 # Base URL for the repository
 BASE_URL="https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json"
 
-# File mappings (key -> remote filename)
-declare -A FILES
-FILES["countries"]="countries.json"
-FILES["countries+states"]="countries%2Bstates.json"
-FILES["cities"]="cities.json"
-FILES["states"]="states.json"
-FILES["regions"]="regions.json"
-FILES["subregions"]="subregions.json"
-FILES["countries+cities"]="countries%2Bcities.json"
-FILES["states+cities"]="states%2Bcities.json"
-FILES["countries+states+cities"]="countries%2Bstates%2Bcities.json"
+# All available file keys
+ALL_KEYS="countries countries+states cities states regions subregions countries+cities states+cities countries+states+cities"
 
-# Local file names (key -> local filename)
-declare -A LOCAL_FILES
-LOCAL_FILES["countries"]="countries.json"
-LOCAL_FILES["countries+states"]="countries+states.json"
-LOCAL_FILES["cities"]="cities.json"
-LOCAL_FILES["states"]="states.json"
-LOCAL_FILES["regions"]="regions.json"
-LOCAL_FILES["subregions"]="subregions.json"
-LOCAL_FILES["countries+cities"]="countries+cities.json"
-LOCAL_FILES["states+cities"]="states+cities.json"
-LOCAL_FILES["countries+states+cities"]="countries+states+cities.json"
+# =============================================================================
+# File Mapping Functions (compatible with bash 3.x)
+# =============================================================================
+
+get_remote_filename() {
+    local key="$1"
+    case "$key" in
+        "countries") echo "countries.json" ;;
+        "countries+states") echo "countries%2Bstates.json" ;;
+        "cities") echo "cities.json" ;;
+        "states") echo "states.json" ;;
+        "regions") echo "regions.json" ;;
+        "subregions") echo "subregions.json" ;;
+        "countries+cities") echo "countries%2Bcities.json" ;;
+        "states+cities") echo "states%2Bcities.json" ;;
+        "countries+states+cities") echo "countries%2Bstates%2Bcities.json" ;;
+        *) echo "" ;;
+    esac
+}
+
+get_local_filename() {
+    local key="$1"
+    case "$key" in
+        "countries") echo "countries.json" ;;
+        "countries+states") echo "countries+states.json" ;;
+        "cities") echo "cities.json" ;;
+        "states") echo "states.json" ;;
+        "regions") echo "regions.json" ;;
+        "subregions") echo "subregions.json" ;;
+        "countries+cities") echo "countries+cities.json" ;;
+        "states+cities") echo "states+cities.json" ;;
+        "countries+states+cities") echo "countries+states+cities.json" ;;
+        *) echo "" ;;
+    esac
+}
+
+is_valid_key() {
+    local key="$1"
+    local remote_file
+    remote_file=$(get_remote_filename "$key")
+    [ -n "$remote_file" ]
+}
 
 # =============================================================================
 # Helper Functions
@@ -103,11 +125,11 @@ show_help() {
 
 format_bytes() {
     local bytes=$1
-    if [ $bytes -ge 1073741824 ]; then
+    if [ "$bytes" -ge 1073741824 ] 2>/dev/null; then
         echo "$(echo "scale=2; $bytes / 1073741824" | bc) GB"
-    elif [ $bytes -ge 1048576 ]; then
+    elif [ "$bytes" -ge 1048576 ] 2>/dev/null; then
         echo "$(echo "scale=2; $bytes / 1048576" | bc) MB"
-    elif [ $bytes -ge 1024 ]; then
+    elif [ "$bytes" -ge 1024 ] 2>/dev/null; then
         echo "$(echo "scale=2; $bytes / 1024" | bc) KB"
     else
         echo "$bytes B"
@@ -116,14 +138,26 @@ format_bytes() {
 
 get_remote_size() {
     local url=$1
-    local size=$(curl -sI "$url" 2>/dev/null | grep -i "content-length" | awk '{print $2}' | tr -d '\r')
+    local size
+    size=$(curl -sI "$url" 2>/dev/null | grep -i "content-length" | awk '{print $2}' | tr -d '\r')
     echo "${size:-0}"
 }
 
 check_url_exists() {
     local url=$1
-    local status=$(curl -sI -o /dev/null -w "%{http_code}" "$url" 2>/dev/null)
+    local status
+    status=$(curl -sI -o /dev/null -w "%{http_code}" "$url" 2>/dev/null)
     [ "$status" = "200" ]
+}
+
+get_file_size() {
+    local file=$1
+    if [ -f "$file" ]; then
+        # Try macOS stat first, then Linux stat
+        stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "0"
+    else
+        echo "0"
+    fi
 }
 
 # =============================================================================
@@ -132,21 +166,29 @@ check_url_exists() {
 
 download_file() {
     local key=$1
-    local remote_file=${FILES[$key]}
-    local local_file=${LOCAL_FILES[$key]}
-    local url="${BASE_URL}/${remote_file}"
-    local gz_url="${url}.gz"
-    local dest="${STORAGE_DIR}/${local_file}"
+    local remote_file
+    local local_file
+    local url
+    local gz_url
+    local dest
+
+    remote_file=$(get_remote_filename "$key")
+    local_file=$(get_local_filename "$key")
+    url="${BASE_URL}/${remote_file}"
+    gz_url="${url}.gz"
+    dest="${STORAGE_DIR}/${local_file}"
 
     print_info "Checking ${key}..."
 
     # Check if we should skip
     if [ -f "$dest" ] && [ "$FORCE_DOWNLOAD" = false ]; then
-        local local_size=$(stat -f%z "$dest" 2>/dev/null || stat -c%s "$dest" 2>/dev/null || echo "0")
-        local remote_size=$(get_remote_size "$url")
+        local local_size
+        local remote_size
+        local_size=$(get_file_size "$dest")
+        remote_size=$(get_remote_size "$url")
 
         if [ "$local_size" = "$remote_size" ] && [ "$remote_size" != "0" ]; then
-            print_success "${key}: Up-to-date ($(format_bytes $local_size))"
+            print_success "${key}: Up-to-date ($(format_bytes "$local_size"))"
             return 0
         fi
     fi
@@ -155,8 +197,9 @@ download_file() {
     if check_url_exists "$url"; then
         print_info "Downloading ${key}..."
         if curl -# -L -o "$dest" "$url" 2>&1; then
-            local size=$(stat -f%z "$dest" 2>/dev/null || stat -c%s "$dest" 2>/dev/null || echo "0")
-            print_success "${key}: Downloaded ($(format_bytes $size))"
+            local size
+            size=$(get_file_size "$dest")
+            print_success "${key}: Downloaded ($(format_bytes "$size"))"
             return 0
         else
             print_error "${key}: Download failed"
@@ -174,8 +217,9 @@ download_file() {
             print_info "Decompressing ${key}..."
             if gunzip -c "$temp_gz" > "$dest" 2>/dev/null; then
                 rm -f "$temp_gz"
-                local size=$(stat -f%z "$dest" 2>/dev/null || stat -c%s "$dest" 2>/dev/null || echo "0")
-                print_success "${key}: Downloaded and decompressed ($(format_bytes $size))"
+                local size
+                size=$(get_file_size "$dest")
+                print_success "${key}: Downloaded and decompressed ($(format_bytes "$size"))"
                 return 0
             else
                 rm -f "$temp_gz"
@@ -198,7 +242,7 @@ download_file() {
 # =============================================================================
 
 # Parse arguments
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
     case $1 in
         -d|--dir)
             STORAGE_DIR="$2"
@@ -250,26 +294,28 @@ echo ""
 
 # Determine which files to download
 if [ -n "$ONLY_FILES" ]; then
-    IFS=',' read -ra DOWNLOAD_KEYS <<< "$ONLY_FILES"
+    # Convert comma-separated to space-separated
+    DOWNLOAD_KEYS=$(echo "$ONLY_FILES" | tr ',' ' ')
 else
-    DOWNLOAD_KEYS=("countries+states" "countries" "cities" "countries+cities" "countries+states+cities" "regions" "states+cities" "states" "subregions")
+    DOWNLOAD_KEYS="$ALL_KEYS"
 fi
 
 # Download files
 success_count=0
 fail_count=0
 
-for key in "${DOWNLOAD_KEYS[@]}"; do
+for key in $DOWNLOAD_KEYS; do
     key=$(echo "$key" | xargs) # Trim whitespace
-    if [ -z "${FILES[$key]}" ]; then
+
+    if ! is_valid_key "$key"; then
         print_warning "Unknown file key: ${key}, skipping..."
         continue
     fi
 
     if download_file "$key"; then
-        ((++success_count))
+        success_count=$((success_count + 1))
     else
-        ((++fail_count))
+        fail_count=$((fail_count + 1))
     fi
     echo ""
 done
@@ -279,8 +325,8 @@ echo -e "${BLUE}=============================================${NC}"
 echo -e "${BLUE}  Summary${NC}"
 echo -e "${BLUE}=============================================${NC}"
 print_success "Successful: ${success_count}"
-if [ $fail_count -gt 0 ]; then
+if [ "$fail_count" -gt 0 ]; then
     print_error "Failed: ${fail_count}"
 fi
 
-exit $fail_count
+exit "$fail_count"
