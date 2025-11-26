@@ -152,33 +152,229 @@ class SyncCountriesAndStatesJsonFilesCommand extends Command
 
             $this->info("  ↓ Downloading (local: {$localSize} → remote: {$remoteSize})");
         } else {
-            $this->info("  ↓ Downloading gzipped version...");
+            $remoteSizeFormatted = $this->formatBytes($remoteSize);
+            $this->info("  ↓ Downloading gzipped version ({$remoteSizeFormatted})...");
         }
 
-        // 4) Download the file
-        $response = Http::timeout(60)->get($url);
+        // 4) Download the file using streaming to avoid memory issues
+        if ($isGzipped) {
+            $result = $this->streamDownloadGzip($url, $path);
+        } else {
+            $result = $this->streamDownload($url, $path);
+        }
 
-        if (!$response->successful()) {
-            $this->error("  ✖ GET failed with status {$response->status()}");
-            Log::warning("sync:countries-states-json – GET {$url} returned {$response->status()}");
+        if ($result) {
+            $finalSize = Storage::disk('local')->exists($path)
+                ? $this->formatBytes(Storage::disk('local')->size($path))
+                : 'unknown';
+            $this->info("  ✔ Saved to storage/app/{$path} ({$finalSize})");
+        }
+
+        return $result;
+    }
+
+    /**
+     * Stream download a regular file directly to storage.
+     *
+     * @param string $url
+     * @param string $path
+     * @return bool
+     */
+    protected function streamDownload(string $url, string $path): bool
+    {
+        $storagePath = Storage::disk('local')->path($path);
+        $this->ensureDirectoryExists(dirname($storagePath));
+
+        $fp = fopen($storagePath, 'w');
+        if (!$fp) {
+            $this->error("  ✖ Failed to open file for writing");
+            Log::error("sync:countries-states-json – failed to open file for writing: {$storagePath}");
             return false;
         }
 
-        $content = $response->body();
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_FILE => $fp,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_TIMEOUT => 300,
+            CURLOPT_CONNECTTIMEOUT => 30,
+            CURLOPT_FAILONERROR => true,
+            CURLOPT_NOPROGRESS => false,
+            CURLOPT_PROGRESSFUNCTION => function ($resource, $downloadSize, $downloaded) {
+                if ($downloadSize > 0) {
+                    $percent = round(($downloaded / $downloadSize) * 100, 1);
+                    $downloadedFormatted = $this->formatBytes($downloaded);
+                    $totalFormatted = $this->formatBytes($downloadSize);
+                    $this->output->write("\r  ↓ Downloading... {$percent}% ({$downloadedFormatted}/{$totalFormatted})    ");
+                }
+                return 0;
+            },
+        ]);
 
-        // 5) Decompress if gzipped
-        if ($isGzipped) {
-            $decompressed = @gzdecode($content);
-            if ($decompressed === false) {
-                $this->error("  ✖ Failed to decompress gzip file");
-                Log::error("sync:countries-states-json – failed to decompress gzip file {$url}");
-                return false;
-            }
-            $content = $decompressed;
+        $success = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+
+        curl_close($ch);
+        fclose($fp);
+
+        $this->output->write("\r" . str_repeat(' ', 80) . "\r"); // Clear progress line
+
+        if (!$success || $httpCode >= 400) {
+            @unlink($storagePath);
+            $this->error("  ✖ Download failed: {$error}");
+            Log::warning("sync:countries-states-json – stream download failed for {$url}: {$error}");
+            return false;
         }
 
-        Storage::disk('local')->put($path, $content);
-        $this->info("  ✔ Saved to storage/app/{$path}");
         return true;
+    }
+
+    /**
+     * Stream download and decompress a gzip file to storage.
+     * Uses file-based decompression to avoid memory issues with large files.
+     *
+     * @param string $url
+     * @param string $path
+     * @return bool
+     */
+    protected function streamDownloadGzip(string $url, string $path): bool
+    {
+        $storagePath = Storage::disk('local')->path($path);
+        $tempGzPath = $storagePath . '.gz.tmp';
+        $this->ensureDirectoryExists(dirname($storagePath));
+
+        // Step 1: Download gzip file to temp location
+        $fp = fopen($tempGzPath, 'w');
+        if (!$fp) {
+            $this->error("  ✖ Failed to open temp file for writing");
+            Log::error("sync:countries-states-json – failed to open temp file for writing: {$tempGzPath}");
+            return false;
+        }
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_FILE => $fp,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_TIMEOUT => 600, // 10 minutes for large files
+            CURLOPT_CONNECTTIMEOUT => 30,
+            CURLOPT_FAILONERROR => true,
+            CURLOPT_NOPROGRESS => false,
+            CURLOPT_PROGRESSFUNCTION => function ($resource, $downloadSize, $downloaded) {
+                if ($downloadSize > 0) {
+                    $percent = round(($downloaded / $downloadSize) * 100, 1);
+                    $downloadedFormatted = $this->formatBytes($downloaded);
+                    $totalFormatted = $this->formatBytes($downloadSize);
+                    $this->output->write("\r  ↓ Downloading... {$percent}% ({$downloadedFormatted}/{$totalFormatted})    ");
+                }
+                return 0;
+            },
+        ]);
+
+        $success = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+
+        curl_close($ch);
+        fclose($fp);
+
+        $this->output->write("\r" . str_repeat(' ', 80) . "\r"); // Clear progress line
+
+        if (!$success || $httpCode >= 400) {
+            @unlink($tempGzPath);
+            $this->error("  ✖ Download failed: {$error}");
+            Log::warning("sync:countries-states-json – gzip download failed for {$url}: {$error}");
+            return false;
+        }
+
+        // Step 2: Decompress using streaming (file-based, not memory-based)
+        $this->line("  ⚙ Decompressing...");
+        $result = $this->decompressGzipFile($tempGzPath, $storagePath);
+
+        // Cleanup temp file
+        @unlink($tempGzPath);
+
+        if (!$result) {
+            $this->error("  ✖ Decompression failed");
+        }
+
+        return $result;
+    }
+
+    /**
+     * Decompress a gzip file to destination using streaming.
+     *
+     * @param string $gzPath
+     * @param string $destPath
+     * @return bool
+     */
+    protected function decompressGzipFile(string $gzPath, string $destPath): bool
+    {
+        $gzHandle = gzopen($gzPath, 'rb');
+        if (!$gzHandle) {
+            Log::error("sync:countries-states-json – failed to open gzip file: {$gzPath}");
+            return false;
+        }
+
+        $destHandle = fopen($destPath, 'w');
+        if (!$destHandle) {
+            gzclose($gzHandle);
+            Log::error("sync:countries-states-json – failed to open destination file: {$destPath}");
+            return false;
+        }
+
+        // Read and write in chunks to keep memory usage low
+        $chunkSize = 1024 * 1024; // 1MB chunks
+        $bytesWritten = 0;
+        while (!gzeof($gzHandle)) {
+            $chunk = gzread($gzHandle, $chunkSize);
+            if ($chunk === false) {
+                break;
+            }
+            fwrite($destHandle, $chunk);
+            $bytesWritten += strlen($chunk);
+
+            // Show progress for large files
+            if ($bytesWritten % (10 * 1024 * 1024) === 0) { // Every 10MB
+                $this->output->write("\r  ⚙ Decompressing... " . $this->formatBytes($bytesWritten) . "    ");
+            }
+        }
+
+        gzclose($gzHandle);
+        fclose($destHandle);
+
+        $this->output->write("\r" . str_repeat(' ', 80) . "\r"); // Clear progress line
+
+        return true;
+    }
+
+    /**
+     * Ensure a directory exists.
+     *
+     * @param string $dir
+     * @return void
+     */
+    protected function ensureDirectoryExists(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+    }
+
+    /**
+     * Format bytes to human readable format.
+     *
+     * @param int $bytes
+     * @return string
+     */
+    protected function formatBytes(int $bytes): string
+    {
+        $units = ['B', 'KB', 'MB', 'GB'];
+        $i = 0;
+        while ($bytes >= 1024 && $i < count($units) - 1) {
+            $bytes /= 1024;
+            $i++;
+        }
+        return round($bytes, 2) . ' ' . $units[$i];
     }
 }

@@ -122,28 +122,158 @@ class GeoDataService
             }
         }
 
-        // 4) Download the file
-        $response = Http::timeout(60)->get($url);
+        // 4) Download the file using streaming to avoid memory issues
+        if ($isGzipped) {
+            return $this->streamDownloadGzip($url, $path);
+        }
 
-        if (!$response->successful()) {
-            Log::warning("sync:countries-states-json – GET {$url} returned {$response->status()}");
+        return $this->streamDownload($url, $path);
+    }
+
+    /**
+     * Stream download a regular file directly to storage.
+     *
+     * @param string $url
+     * @param string $path
+     * @return bool
+     */
+    protected function streamDownload(string $url, string $path): bool
+    {
+        $storagePath = Storage::disk('local')->path($path);
+        $this->ensureDirectoryExists(dirname($storagePath));
+
+        $fp = fopen($storagePath, 'w');
+        if (!$fp) {
+            Log::error("sync:countries-states-json – failed to open file for writing: {$storagePath}");
             return false;
         }
 
-        $content = $response->body();
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_FILE => $fp,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_TIMEOUT => 300,
+            CURLOPT_CONNECTTIMEOUT => 30,
+            CURLOPT_FAILONERROR => true,
+        ]);
 
-        // 5) Decompress if gzipped
-        if ($isGzipped) {
-            $decompressed = @gzdecode($content);
-            if ($decompressed === false) {
-                Log::error("sync:countries-states-json – failed to decompress gzip file {$url}");
-                return false;
-            }
-            $content = $decompressed;
+        $success = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+
+        curl_close($ch);
+        fclose($fp);
+
+        if (!$success || $httpCode >= 400) {
+            @unlink($storagePath);
+            Log::warning("sync:countries-states-json – stream download failed for {$url}: {$error}");
+            return false;
         }
 
-        Storage::disk('local')->put($path, $content);
         return true;
+    }
+
+    /**
+     * Stream download and decompress a gzip file to storage.
+     * Uses file-based decompression to avoid memory issues with large files.
+     *
+     * @param string $url
+     * @param string $path
+     * @return bool
+     */
+    protected function streamDownloadGzip(string $url, string $path): bool
+    {
+        $storagePath = Storage::disk('local')->path($path);
+        $tempGzPath = $storagePath . '.gz.tmp';
+        $this->ensureDirectoryExists(dirname($storagePath));
+
+        // Step 1: Download gzip file to temp location
+        $fp = fopen($tempGzPath, 'w');
+        if (!$fp) {
+            Log::error("sync:countries-states-json – failed to open temp file for writing: {$tempGzPath}");
+            return false;
+        }
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_FILE => $fp,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_TIMEOUT => 600, // 10 minutes for large files
+            CURLOPT_CONNECTTIMEOUT => 30,
+            CURLOPT_FAILONERROR => true,
+        ]);
+
+        $success = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+
+        curl_close($ch);
+        fclose($fp);
+
+        if (!$success || $httpCode >= 400) {
+            @unlink($tempGzPath);
+            Log::warning("sync:countries-states-json – gzip download failed for {$url}: {$error}");
+            return false;
+        }
+
+        // Step 2: Decompress using streaming (file-based, not memory-based)
+        $result = $this->decompressGzipFile($tempGzPath, $storagePath);
+
+        // Cleanup temp file
+        @unlink($tempGzPath);
+
+        return $result;
+    }
+
+    /**
+     * Decompress a gzip file to destination using streaming.
+     *
+     * @param string $gzPath
+     * @param string $destPath
+     * @return bool
+     */
+    protected function decompressGzipFile(string $gzPath, string $destPath): bool
+    {
+        $gzHandle = gzopen($gzPath, 'rb');
+        if (!$gzHandle) {
+            Log::error("sync:countries-states-json – failed to open gzip file: {$gzPath}");
+            return false;
+        }
+
+        $destHandle = fopen($destPath, 'w');
+        if (!$destHandle) {
+            gzclose($gzHandle);
+            Log::error("sync:countries-states-json – failed to open destination file: {$destPath}");
+            return false;
+        }
+
+        // Read and write in chunks to keep memory usage low
+        $chunkSize = 1024 * 1024; // 1MB chunks
+        while (!gzeof($gzHandle)) {
+            $chunk = gzread($gzHandle, $chunkSize);
+            if ($chunk === false) {
+                break;
+            }
+            fwrite($destHandle, $chunk);
+        }
+
+        gzclose($gzHandle);
+        fclose($destHandle);
+
+        return true;
+    }
+
+    /**
+     * Ensure a directory exists.
+     *
+     * @param string $dir
+     * @return void
+     */
+    protected function ensureDirectoryExists(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
     }
 
     /**
