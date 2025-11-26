@@ -6,6 +6,7 @@ namespace Aotr\DynamicLevelHelper\Providers;
 
 use Aotr\DynamicLevelHelper\Console\Commands\DynamicLevelsMakeCommand;
 use Aotr\DynamicLevelHelper\Console\Commands\EnhancedDBServiceCommand;
+use Aotr\DynamicLevelHelper\Console\Commands\GeoDataScriptCommand;
 use Aotr\DynamicLevelHelper\Console\Commands\SyncCountriesAndStatesJsonFilesCommand;
 use Aotr\DynamicLevelHelper\DynamicHelpersLoader;
 use Aotr\DynamicLevelHelper\Macros\ResponseMacros;
@@ -63,6 +64,11 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             __DIR__ . '/../config/dynamic-levels-helper-whatsapp.php' => config_path('dynamic-levels-helper-whatsapp.php'),
         ], 'dynamic-levels-helper-whatsapp-config');
 
+        // Publish the shell script for users with memory constraints
+        $this->publishes([
+            __DIR__ . '/../../scripts/sync-geo-data.sh' => base_path('sync-geo-data.sh'),
+        ], 'dynamic-levels-helper-scripts');
+
     }
 
     /**
@@ -83,6 +89,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
                 DynamicLevelsMakeCommand::class,
                 EnhancedDBServiceCommand::class,
                 SyncCountriesAndStatesJsonFilesCommand::class,
+                GeoDataScriptCommand::class,
             ]);
         }
     }
