@@ -3,48 +3,32 @@
 # =============================================================================
 # Geo Data Sync Script
 # =============================================================================
-# This script downloads geographical data files from the countries-states-cities
-# database repository. It's designed as an alternative to the PHP artisan command
-# for users who experience memory issues with large file downloads.
+# This script downloads countries, states, and cities JSON data from the
+# dr5hn/countries-states-cities-database repository.
+#
+# Use this script if you encounter memory issues with the PHP artisan command:
+#   php artisan sync:countries-states-json
 #
 # Usage:
 #   ./sync-geo-data.sh [options]
 #
 # Options:
-#   --dir=PATH      Specify the storage directory (default: storage/app/geo-data)
-#   --force         Force download even if files exist
-#   --only=FILES    Comma-separated list of files to download
-#   --help          Show this help message
+#   -d, --dir DIR       Storage directory (default: storage/app/remote)
+#   -f, --force         Force re-download even if files exist
+#   -o, --only FILES    Only download specific files (comma-separated)
+#                       Available: countries,countries+states,cities,states,
+#                                  regions,subregions,countries+cities,
+#                                  states+cities,countries+states+cities
+#   -h, --help          Show this help message
 #
 # Examples:
 #   ./sync-geo-data.sh
-#   ./sync-geo-data.sh --dir=/path/to/storage
+#   ./sync-geo-data.sh --dir /path/to/storage
+#   ./sync-geo-data.sh --only countries,states
 #   ./sync-geo-data.sh --force
-#   ./sync-geo-data.sh --only=countries,states
-#   ./sync-geo-data.sh --only=countries,states,cities --force
 # =============================================================================
 
 set -e
-
-# Default configuration
-BASE_URL="https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json"
-DEFAULT_DIR="storage/app/geo-data"
-STORAGE_DIR=""
-FORCE=false
-ONLY_FILES=""
-
-# Available files
-ALL_FILES=(
-    "countries"
-    "states"
-    "cities"
-    "regions"
-    "subregions"
-    "countries+states"
-    "countries+cities"
-    "countries+states+cities"
-    "states+cities"
-)
 
 # Colors for output
 RED='\033[0;31m'
@@ -53,95 +37,93 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Default settings
+STORAGE_DIR="storage/app/remote"
+FORCE_DOWNLOAD=false
+ONLY_FILES=""
+
+# Base URL for the repository
+BASE_URL="https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json"
+
+# File mappings (key -> remote filename)
+declare -A FILES
+FILES["countries"]="countries.json"
+FILES["countries+states"]="countries%2Bstates.json"
+FILES["cities"]="cities.json"
+FILES["states"]="states.json"
+FILES["regions"]="regions.json"
+FILES["subregions"]="subregions.json"
+FILES["countries+cities"]="countries%2Bcities.json"
+FILES["states+cities"]="states%2Bcities.json"
+FILES["countries+states+cities"]="countries%2Bstates%2Bcities.json"
+
+# Local file names (key -> local filename)
+declare -A LOCAL_FILES
+LOCAL_FILES["countries"]="countries.json"
+LOCAL_FILES["countries+states"]="countries+states.json"
+LOCAL_FILES["cities"]="cities.json"
+LOCAL_FILES["states"]="states.json"
+LOCAL_FILES["regions"]="regions.json"
+LOCAL_FILES["subregions"]="subregions.json"
+LOCAL_FILES["countries+cities"]="countries+cities.json"
+LOCAL_FILES["states+cities"]="states+cities.json"
+LOCAL_FILES["countries+states+cities"]="countries+states+cities.json"
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
 
 print_header() {
-    echo -e "${BLUE}"
-    echo "=============================================="
-    echo "  Geo Data Sync Script"
-    echo "=============================================="
-    echo -e "${NC}"
+    echo -e "${BLUE}=============================================${NC}"
+    echo -e "${BLUE}  Geo Data Sync Script${NC}"
+    echo -e "${BLUE}=============================================${NC}"
+    echo ""
 }
 
 print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
+    echo -e "${GREEN}✓${NC} $1"
 }
 
 print_error() {
-    echo -e "${RED}✗ $1${NC}"
+    echo -e "${RED}✖${NC} $1"
 }
 
 print_warning() {
-    echo -e "${YELLOW}! $1${NC}"
+    echo -e "${YELLOW}!${NC} $1"
 }
 
 print_info() {
-    echo -e "${BLUE}→ $1${NC}"
+    echo -e "${BLUE}→${NC} $1"
 }
 
 show_help() {
-    echo "Usage: $0 [options]"
-    echo ""
-    echo "Options:"
-    echo "  --dir=PATH      Specify the storage directory (default: $DEFAULT_DIR)"
-    echo "  --force         Force download even if files exist"
-    echo "  --only=FILES    Comma-separated list of files to download"
-    echo "  --help          Show this help message"
-    echo ""
-    echo "Available files:"
-    for file in "${ALL_FILES[@]}"; do
-        echo "  - $file"
-    done
-    echo ""
-    echo "Examples:"
-    echo "  $0"
-    echo "  $0 --dir=/path/to/storage"
-    echo "  $0 --force"
-    echo "  $0 --only=countries,states"
-    echo "  $0 --only=countries,states,cities --force"
+    head -40 "$0" | tail -35
+    exit 0
 }
 
-# =============================================================================
-# Parse Arguments
-# =============================================================================
-
-parse_arguments() {
-    for arg in "$@"; do
-        case $arg in
-            --dir=*)
-                STORAGE_DIR="${arg#*=}"
-                ;;
-            --force)
-                FORCE=true
-                ;;
-            --only=*)
-                ONLY_FILES="${arg#*=}"
-                ;;
-            --help)
-                show_help
-                exit 0
-                ;;
-            *)
-                print_error "Unknown option: $arg"
-                show_help
-                exit 1
-                ;;
-        esac
-    done
-    
-    # Set default directory if not specified
-    if [ -z "$STORAGE_DIR" ]; then
-        # Try to find Laravel's storage directory
-        if [ -d "storage/app" ]; then
-            STORAGE_DIR="$DEFAULT_DIR"
-        elif [ -d "../storage/app" ]; then
-            STORAGE_DIR="../$DEFAULT_DIR"
-        else
-            STORAGE_DIR="$DEFAULT_DIR"
-        fi
+format_bytes() {
+    local bytes=$1
+    if [ $bytes -ge 1073741824 ]; then
+        echo "$(echo "scale=2; $bytes / 1073741824" | bc) GB"
+    elif [ $bytes -ge 1048576 ]; then
+        echo "$(echo "scale=2; $bytes / 1048576" | bc) MB"
+    elif [ $bytes -ge 1024 ]; then
+        echo "$(echo "scale=2; $bytes / 1024" | bc) KB"
+    else
+        echo "$bytes B"
     fi
+}
+
+get_remote_size() {
+    local url=$1
+    local size=$(curl -sI "$url" 2>/dev/null | grep -i "content-length" | awk '{print $2}' | tr -d '\r')
+    echo "${size:-0}"
+}
+
+check_url_exists() {
+    local url=$1
+    local status=$(curl -sI -o /dev/null -w "%{http_code}" "$url" 2>/dev/null)
+    [ "$status" = "200" ]
 }
 
 # =============================================================================
@@ -149,125 +131,156 @@ parse_arguments() {
 # =============================================================================
 
 download_file() {
-    local filename="$1"
-    local json_file="${filename}.json"
-    local gz_file="${filename}.json.gz"
-    local target_path="${STORAGE_DIR}/${json_file}"
-    local temp_gz="${STORAGE_DIR}/${gz_file}"
-    
-    # Check if file exists and force is not set
-    if [ -f "$target_path" ] && [ "$FORCE" = false ]; then
-        print_warning "Skipping $json_file (already exists, use --force to overwrite)"
-        return 0
+    local key=$1
+    local remote_file=${FILES[$key]}
+    local local_file=${LOCAL_FILES[$key]}
+    local url="${BASE_URL}/${remote_file}"
+    local gz_url="${url}.gz"
+    local dest="${STORAGE_DIR}/${local_file}"
+
+    print_info "Checking ${key}..."
+
+    # Check if we should skip
+    if [ -f "$dest" ] && [ "$FORCE_DOWNLOAD" = false ]; then
+        local local_size=$(stat -f%z "$dest" 2>/dev/null || stat -c%s "$dest" 2>/dev/null || echo "0")
+        local remote_size=$(get_remote_size "$url")
+
+        if [ "$local_size" = "$remote_size" ] && [ "$remote_size" != "0" ]; then
+            print_success "${key}: Up-to-date ($(format_bytes $local_size))"
+            return 0
+        fi
     fi
-    
-    print_info "Downloading $json_file..."
-    
-    # Try downloading JSON first
-    local json_url="${BASE_URL}/${json_file}"
-    local http_code
-    
-    http_code=$(curl -s -w "%{http_code}" -o "$target_path" "$json_url")
-    
-    if [ "$http_code" = "200" ]; then
-        local size=$(du -h "$target_path" | cut -f1)
-        print_success "Downloaded $json_file ($size)"
-        return 0
-    fi
-    
-    # JSON failed, try gzip
-    print_info "JSON not available, trying gzip version..."
-    rm -f "$target_path" 2>/dev/null
-    
-    local gz_url="${BASE_URL}/${gz_file}"
-    http_code=$(curl -s -w "%{http_code}" -o "$temp_gz" "$gz_url")
-    
-    if [ "$http_code" = "200" ]; then
-        print_info "Decompressing $gz_file..."
-        
-        # Decompress using gunzip
-        if gunzip -c "$temp_gz" > "$target_path" 2>/dev/null; then
-            rm -f "$temp_gz"
-            local size=$(du -h "$target_path" | cut -f1)
-            print_success "Downloaded and decompressed $json_file ($size)"
+
+    # Try regular JSON first
+    if check_url_exists "$url"; then
+        print_info "Downloading ${key}..."
+        if curl -# -L -o "$dest" "$url" 2>&1; then
+            local size=$(stat -f%z "$dest" 2>/dev/null || stat -c%s "$dest" 2>/dev/null || echo "0")
+            print_success "${key}: Downloaded ($(format_bytes $size))"
             return 0
         else
-            print_error "Failed to decompress $gz_file"
-            rm -f "$temp_gz" "$target_path" 2>/dev/null
+            print_error "${key}: Download failed"
             return 1
         fi
     fi
-    
-    print_error "Failed to download $json_file (HTTP $http_code)"
-    rm -f "$temp_gz" "$target_path" 2>/dev/null
+
+    # Try gzipped version
+    if check_url_exists "$gz_url"; then
+        print_warning "${key}: JSON not found, trying gzipped version..."
+        local temp_gz="${dest}.gz.tmp"
+
+        print_info "Downloading ${key} (gzipped)..."
+        if curl -# -L -o "$temp_gz" "$gz_url" 2>&1; then
+            print_info "Decompressing ${key}..."
+            if gunzip -c "$temp_gz" > "$dest" 2>/dev/null; then
+                rm -f "$temp_gz"
+                local size=$(stat -f%z "$dest" 2>/dev/null || stat -c%s "$dest" 2>/dev/null || echo "0")
+                print_success "${key}: Downloaded and decompressed ($(format_bytes $size))"
+                return 0
+            else
+                rm -f "$temp_gz"
+                print_error "${key}: Decompression failed"
+                return 1
+            fi
+        else
+            rm -f "$temp_gz"
+            print_error "${key}: Gzipped download failed"
+            return 1
+        fi
+    fi
+
+    print_error "${key}: File not found (tried both .json and .json.gz)"
     return 1
 }
 
 # =============================================================================
-# Main Execution
+# Main Script
 # =============================================================================
 
-main() {
-    print_header
-    
-    # Parse command line arguments
-    parse_arguments "$@"
-    
-    # Create storage directory
-    print_info "Storage directory: $STORAGE_DIR"
-    mkdir -p "$STORAGE_DIR"
-    
-    # Determine which files to download
-    local files_to_download=()
-    
-    if [ -n "$ONLY_FILES" ]; then
-        # Parse comma-separated list
-        IFS=',' read -ra ADDR <<< "$ONLY_FILES"
-        for file in "${ADDR[@]}"; do
-            # Trim whitespace
-            file=$(echo "$file" | xargs)
-            files_to_download+=("$file")
-        done
-    else
-        files_to_download=("${ALL_FILES[@]}")
-    fi
-    
-    echo ""
-    print_info "Files to download: ${#files_to_download[@]}"
-    echo ""
-    
-    # Download each file
-    local success_count=0
-    local fail_count=0
-    local skip_count=0
-    
-    for file in "${files_to_download[@]}"; do
-        if download_file "$file"; then
-            ((success_count++))
-        else
-            ((fail_count++))
-        fi
-    done
-    
-    # Summary
-    echo ""
-    echo -e "${BLUE}=============================================="
-    echo "  Summary"
-    echo -e "==============================================${NC}"
-    print_success "Downloaded: $success_count"
-    if [ $fail_count -gt 0 ]; then
-        print_error "Failed: $fail_count"
-    fi
-    echo ""
-    
-    if [ $fail_count -eq 0 ]; then
-        print_success "All files synced successfully!"
-        exit 0
-    else
-        print_warning "Some files failed to download"
-        exit 1
-    fi
-}
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -d|--dir)
+            STORAGE_DIR="$2"
+            shift 2
+            ;;
+        -f|--force)
+            FORCE_DOWNLOAD=true
+            shift
+            ;;
+        -o|--only)
+            ONLY_FILES="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
 
-# Run main function
-main "$@"
+# Print header
+print_header
+
+# Check for curl
+if ! command -v curl &> /dev/null; then
+    print_error "curl is required but not installed"
+    exit 1
+fi
+
+# Check for gunzip
+if ! command -v gunzip &> /dev/null; then
+    print_error "gunzip is required but not installed"
+    exit 1
+fi
+
+# Create storage directory
+if [ ! -d "$STORAGE_DIR" ]; then
+    print_info "Creating directory: ${STORAGE_DIR}"
+    mkdir -p "$STORAGE_DIR"
+fi
+
+echo "Storage directory: ${STORAGE_DIR}"
+echo "Force download: ${FORCE_DOWNLOAD}"
+echo ""
+
+# Determine which files to download
+if [ -n "$ONLY_FILES" ]; then
+    IFS=',' read -ra DOWNLOAD_KEYS <<< "$ONLY_FILES"
+else
+    DOWNLOAD_KEYS=("countries+states" "countries" "cities" "countries+cities" "countries+states+cities" "regions" "states+cities" "states" "subregions")
+fi
+
+# Download files
+success_count=0
+fail_count=0
+
+for key in "${DOWNLOAD_KEYS[@]}"; do
+    key=$(echo "$key" | xargs) # Trim whitespace
+    if [ -z "${FILES[$key]}" ]; then
+        print_warning "Unknown file key: ${key}, skipping..."
+        continue
+    fi
+
+    if download_file "$key"; then
+        ((++success_count))
+    else
+        ((++fail_count))
+    fi
+    echo ""
+done
+
+# Summary
+echo -e "${BLUE}=============================================${NC}"
+echo -e "${BLUE}  Summary${NC}"
+echo -e "${BLUE}=============================================${NC}"
+print_success "Successful: ${success_count}"
+if [ $fail_count -gt 0 ]; then
+    print_error "Failed: ${fail_count}"
+fi
+
+exit $fail_count
