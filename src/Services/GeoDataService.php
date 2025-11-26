@@ -13,20 +13,27 @@ use Throwable;
 class GeoDataService
 {
     /**
-     * Remote URLs mapped to keys.
+     * Base URL for remote files.
+     *
+     * @var string
+     */
+    protected string $baseUrl = 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json/';
+
+    /**
+     * Remote file names mapped to keys (URL-encoded where needed).
      *
      * @var array<string,string>
      */
-    protected array $urls = [
-        'countries+states' => 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json/countries%2Bstates.json',
-        'countries' => 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json/countries.json',
-        'cities' => 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json/cities.json',
-        'countries+cities' => 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json/countries%2Bcities.json',
-        'countries+states+cities' => 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json/countries%2Bstates%2Bcities.json',
-        'regions' => 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json/regions.json',
-        'states+cities' => 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json/states%2Bcities.json',
-        'states' => 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json/states.json',
-        'subregions' => 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/refs/heads/master/json/subregions.json',
+    protected array $remoteFiles = [
+        'countries+states' => 'countries%2Bstates.json',
+        'countries' => 'countries.json',
+        'cities' => 'cities.json',
+        'countries+cities' => 'countries%2Bcities.json',
+        'countries+states+cities' => 'countries%2Bstates%2Bcities.json',
+        'regions' => 'regions.json',
+        'states+cities' => 'states%2Bcities.json',
+        'states' => 'states.json',
+        'subregions' => 'subregions.json',
     ];
 
     /**
@@ -51,49 +58,92 @@ class GeoDataService
      */
     public function sync(): void
     {
-        foreach ($this->urls as $key => $url) {
+        foreach ($this->remoteFiles as $key => $remoteFile) {
             $path = $this->files[$key];
+            $url = $this->baseUrl . $remoteFile;
+            $gzUrl = $url . '.gz';
+
             try {
-                // 1) HEAD request to get Content-Length
-                $head = Http::timeout(10)->head($url);
+                // Try regular JSON file first
+                $result = $this->tryDownloadFile($url, $path, false);
 
-                if (! $head->successful()) {
-                    Log::warning("sync:countries-states-json – HEAD {$url} returned {$head->status()}");
-                    continue;
+                // If regular JSON returns 404, try .gz version
+                if ($result === 404) {
+                    Log::info("sync:countries-states-json – JSON not found, trying gzip version for {$key}");
+                    $this->tryDownloadFile($gzUrl, $path, true);
                 }
-
-                $remoteSize = (int) $head->header('Content-Length', 0);
-                if ($remoteSize <= 0) {
-                    Log::warning("sync:countries-states-json – remote size zero for {$url}");
-                    continue;
-                }
-
-                // 2) Check local file size
-                $localSize = Storage::disk('local')->exists($path)
-                    ? Storage::disk('local')->size($path)
-                    : 0;
-
-                // 3) If sizes match, nothing to do
-                if ($localSize === $remoteSize) {
-                    continue;
-                }
-
-                // 4) Otherwise, download the new file
-                $response = Http::timeout(30)->get($url);
-
-                if (! $response->successful()) {
-                    Log::warning("sync:countries-states-json – GET {$url} returned {$response->status()}");
-                    continue;
-                }
-
-                Storage::disk('local')->put($path, $response->body());
-            }
-            catch (Throwable $e) {
-                Log::error("sync:countries-states-json – error syncing {$url}: {$e->getMessage()}", [
+            } catch (Throwable $e) {
+                Log::error("sync:countries-states-json – error syncing {$key}: {$e->getMessage()}", [
                     'exception' => $e,
                 ]);
             }
         }
+    }
+
+    /**
+     * Try to download a file from URL.
+     *
+     * @param string $url
+     * @param string $path
+     * @param bool $isGzipped
+     * @return int|bool Returns 404 if not found, true on success, false on other failure
+     */
+    protected function tryDownloadFile(string $url, string $path, bool $isGzipped): int|bool
+    {
+        // 1) HEAD request to check availability and get Content-Length
+        $head = Http::timeout(10)->head($url);
+
+        if ($head->status() === 404) {
+            return 404;
+        }
+
+        if (!$head->successful()) {
+            Log::warning("sync:countries-states-json – HEAD {$url} returned {$head->status()}");
+            return false;
+        }
+
+        $remoteSize = (int) $head->header('Content-Length', 0);
+
+        // For gzipped files, we can't compare sizes directly since decompressed size differs
+        if (!$isGzipped) {
+            if ($remoteSize <= 0) {
+                Log::warning("sync:countries-states-json – remote size zero for {$url}");
+                return false;
+            }
+
+            // 2) Check local file size
+            $localSize = Storage::disk('local')->exists($path)
+                ? Storage::disk('local')->size($path)
+                : 0;
+
+            // 3) If sizes match, nothing to do
+            if ($localSize === $remoteSize) {
+                return true;
+            }
+        }
+
+        // 4) Download the file
+        $response = Http::timeout(60)->get($url);
+
+        if (!$response->successful()) {
+            Log::warning("sync:countries-states-json – GET {$url} returned {$response->status()}");
+            return false;
+        }
+
+        $content = $response->body();
+
+        // 5) Decompress if gzipped
+        if ($isGzipped) {
+            $decompressed = @gzdecode($content);
+            if ($decompressed === false) {
+                Log::error("sync:countries-states-json – failed to decompress gzip file {$url}");
+                return false;
+            }
+            $content = $decompressed;
+        }
+
+        Storage::disk('local')->put($path, $content);
+        return true;
     }
 
     /**
