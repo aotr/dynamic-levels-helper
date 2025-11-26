@@ -267,9 +267,9 @@ for key in "${DOWNLOAD_KEYS[@]}"; do
     fi
 
     if download_file "$key"; then
-        ((success_count++))
+        ((++success_count))
     else
-        ((fail_count++))
+        ((++fail_count))
     fi
     echo ""
 done
