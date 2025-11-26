@@ -6,6 +6,7 @@ namespace Aotr\DynamicLevelHelper\Providers;
 
 use Aotr\DynamicLevelHelper\Console\Commands\DynamicLevelsMakeCommand;
 use Aotr\DynamicLevelHelper\Console\Commands\EnhancedDBServiceCommand;
+use Aotr\DynamicLevelHelper\Console\Commands\GeoDataScriptCommand;
 use Aotr\DynamicLevelHelper\Console\Commands\SyncCountriesAndStatesJsonFilesCommand;
 use Aotr\DynamicLevelHelper\DynamicHelpersLoader;
 use Aotr\DynamicLevelHelper\Macros\ResponseMacros;
@@ -63,6 +64,19 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             __DIR__ . '/../config/dynamic-levels-helper-whatsapp.php' => config_path('dynamic-levels-helper-whatsapp.php'),
         ], 'dynamic-levels-helper-whatsapp-config');
 
+        // Publish geo data sync script
+        $this->publishes([
+            __DIR__ . '/../../scripts/sync-geo-data.sh' => base_path('scripts/sync-geo-data.sh'),
+        ], 'dynamic-levels-helper-scripts');
+
+        // Publish all assets together
+        $this->publishes([
+            __DIR__ . '/../config/dynamic-levels-helper.php' => config_path('dynamic-levels-helper.php'),
+            __DIR__ . '/../config/dynamic-levels-helper-stp.php' => config_path('dynamic-levels-helper-stp.php'),
+            __DIR__ . '/../config/dynamic-levels-helper-sms.php' => config_path('dynamic-levels-helper-sms.php'),
+            __DIR__ . '/../config/dynamic-levels-helper-whatsapp.php' => config_path('dynamic-levels-helper-whatsapp.php'),
+            __DIR__ . '/../../scripts/sync-geo-data.sh' => base_path('scripts/sync-geo-data.sh'),
+        ], 'dynamic-levels-helper');
     }
 
     /**
@@ -83,6 +97,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
                 DynamicLevelsMakeCommand::class,
                 EnhancedDBServiceCommand::class,
                 SyncCountriesAndStatesJsonFilesCommand::class,
+                GeoDataScriptCommand::class,
             ]);
         }
     }
