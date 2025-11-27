@@ -7,8 +7,12 @@ namespace Aotr\DynamicLevelHelper\Providers;
 use Aotr\DynamicLevelHelper\Console\Commands\DynamicLevelsMakeCommand;
 use Aotr\DynamicLevelHelper\Console\Commands\EnhancedDBServiceCommand;
 use Aotr\DynamicLevelHelper\Console\Commands\GeoDataScriptCommand;
+use Aotr\DynamicLevelHelper\Console\Commands\LucideCacheCommand;
 use Aotr\DynamicLevelHelper\Console\Commands\SyncCountriesAndStatesJsonFilesCommand;
 use Aotr\DynamicLevelHelper\DynamicHelpersLoader;
+use Aotr\DynamicLevelHelper\Services\LucideIconService;
+use Aotr\DynamicLevelHelper\View\Components\Lucide\DynamicIcon;
+use Illuminate\Support\Facades\Blade;
 use Aotr\DynamicLevelHelper\Macros\ResponseMacros;
 use Aotr\DynamicLevelHelper\Middleware\BasicAuth;
 use Aotr\DynamicLevelHelper\Providers\EnhancedDBServiceProvider;
@@ -30,7 +34,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->publishConfig();
         $this->registerMiddleware();
         $this->registerConsoleCommands();
-
+        $this->registerBladeComponents();
     }
 
     /**
@@ -69,6 +73,10 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             __DIR__ . '/../../scripts/sync-geo-data.sh' => base_path('sync-geo-data.sh'),
         ], 'dynamic-levels-helper-scripts');
 
+        // Publish Lucide icon config
+        $this->publishes([
+            __DIR__ . '/../config/lucide.php' => config_path('lucide.php'),
+        ], 'lucide-config');
     }
 
     /**
@@ -90,6 +98,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
                 EnhancedDBServiceCommand::class,
                 SyncCountriesAndStatesJsonFilesCommand::class,
                 GeoDataScriptCommand::class,
+                LucideCacheCommand::class,
             ]);
         }
     }
@@ -121,6 +130,12 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->app->singleton('geo-data-service', function () {
             return new \Aotr\DynamicLevelHelper\Services\GeoDataService();
         });
+
+        $this->app->singleton(LucideIconService::class, function () {
+            return new LucideIconService();
+        });
+
+        $this->app->alias(LucideIconService::class, 'lucide-icon-service');
     }
 
     /**
@@ -140,6 +155,18 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             __DIR__ . '/../config/dynamic-levels-helper-whatsapp.php',
             'dynamic-levels-helper-whatsapp'
         );
+        $this->mergeConfigFrom(
+            __DIR__ . '/../config/lucide.php',
+            'lucide'
+        );
+    }
+
+    /**
+     * Registers Blade components.
+     */
+    protected function registerBladeComponents(): void
+    {
+        Blade::component('lucide-icon', DynamicIcon::class);
     }
 
     /**
