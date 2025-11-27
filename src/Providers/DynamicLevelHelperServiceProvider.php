@@ -175,10 +175,13 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
      */
     protected function registerBladeComponents(): void
     {
-        // Only register the component if it's not already registered
-        // This prevents conflicts with user-defined components
-        if (!isset(Blade::getComponents()['lucide-icon'])) {
+        // Register the component, but handle conflicts gracefully
+        // If a user already has a 'lucide-icon' component, this will silently fail
+        try {
             Blade::component('lucide-icon', DynamicIcon::class);
+        } catch (\Throwable $e) {
+            // Component already exists, skip registration
+            report($e);
         }
     }
 
