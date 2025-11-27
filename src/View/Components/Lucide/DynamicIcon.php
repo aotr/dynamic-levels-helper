@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aotr\DynamicLevelHelper\View\Components\Lucide;
 
 use Aotr\DynamicLevelHelper\Services\LucideIconService;
+use Closure;
 use Illuminate\Contracts\View\View;
 use Illuminate\View\Component;
 
@@ -18,90 +19,46 @@ use Illuminate\View\Component;
 class DynamicIcon extends Component
 {
     /**
-     * The icon name (kebab-case).
-     */
-    public string $name;
-
-    /**
-     * Optional size (sets width and height).
-     */
-    public ?string $size;
-
-    /**
-     * Optional stroke color.
-     */
-    public ?string $stroke;
-
-    /**
-     * Optional color (alias for stroke).
-     */
-    public ?string $color;
-
-    /**
-     * Optional stroke width.
-     */
-    public ?string $strokeWidth;
-
-    /**
-     * Optional stroke linecap.
-     */
-    public ?string $strokeLinecap;
-
-    /**
-     * Optional stroke linejoin.
-     */
-    public ?string $strokeLinejoin;
-
-    /**
-     * Optional fill color.
-     */
-    public ?string $fill;
-
-    /**
      * Create a new component instance.
      */
     public function __construct(
-        string $name,
-        ?string $size = null,
-        ?string $stroke = null,
-        ?string $color = null,
-        ?string $strokeWidth = null,
-        ?string $strokeLinecap = null,
-        ?string $strokeLinejoin = null,
-        ?string $fill = null
+        public string $name,
+        public ?string $size = null,
+        public ?string $stroke = null,
+        public ?string $color = null,
+        public ?string $strokeWidth = null,
+        public ?string $strokeLinecap = null,
+        public ?string $strokeLinejoin = null,
+        public ?string $fill = null
     ) {
-        $this->name = $name;
-        $this->size = $size;
-        $this->stroke = $stroke;
-        $this->color = $color;
-        $this->strokeWidth = $strokeWidth;
-        $this->strokeLinecap = $strokeLinecap;
-        $this->strokeLinejoin = $strokeLinejoin;
-        $this->fill = $fill;
     }
 
     /**
      * Get the view / contents that represent the component.
      */
-    public function render(): View|string
+    public function render(): View|Closure|string
     {
-        $attributes = $this->buildAttributes();
+        return function (array $data) {
+            $attributes = $this->buildAttributes($data['attributes'] ?? null);
 
-        try {
-            /** @var LucideIconService $service */
-            $service = app(LucideIconService::class);
-            return $service->getIcon($this->name, $attributes);
-        } catch (\Throwable $e) {
-            // Log the error and return an empty string or placeholder
-            report($e);
-            return '<!-- Lucide icon "' . e($this->name) . '" could not be loaded -->';
-        }
+            try {
+                /** @var LucideIconService $service */
+                $service = app(LucideIconService::class);
+                return $service->getIcon($this->name, $attributes);
+            } catch (\Throwable $e) {
+                // Log the error and return an empty string or placeholder
+                report($e);
+                return '<!-- Lucide icon "' . e($this->name) . '" could not be loaded -->';
+            }
+        };
     }
 
     /**
      * Build the attributes array from component properties.
+     *
+     * @param \Illuminate\View\ComponentAttributeBag|null $attributeBag
      */
-    protected function buildAttributes(): array
+    protected function buildAttributes($attributeBag = null): array
     {
         $attributes = [];
 
@@ -134,6 +91,10 @@ class DynamicIcon extends Component
         }
 
         // Merge with any additional attributes passed to the component
-        return array_merge($attributes, $this->attributes->getAttributes());
+        if ($attributeBag !== null) {
+            $attributes = array_merge($attributes, $attributeBag->getAttributes());
+        }
+
+        return $attributes;
     }
 }
