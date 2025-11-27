@@ -166,7 +166,11 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
      */
     protected function registerBladeComponents(): void
     {
-        Blade::component('lucide-icon', DynamicIcon::class);
+        // Only register the component if it's not already registered
+        // This prevents conflicts with user-defined components
+        if (!isset(Blade::getComponents()['lucide-icon'])) {
+            Blade::component('lucide-icon', DynamicIcon::class);
+        }
     }
 
     /**
