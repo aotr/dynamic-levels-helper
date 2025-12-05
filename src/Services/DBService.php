@@ -47,6 +47,9 @@ class DBService
         $config = array_merge([
             'checkStoredProcedure' => false,
         ], $config);
+        if($config["connection"]){
+            $this->connection = $config["connection"];
+        }
 
         if ($config["checkStoredProcedure"] && !$this->checkStoredProcedure($storedProcedureName)) {
             $errorMessage = $storedProcedureName . ' - Stored Procedure does not exist';
