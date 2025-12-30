@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Aotr\DynamicLevelHelper\Services;
 
 use MischaSigtermans\Toon\Toon;
+use MischaSigtermans\Toon\Converters\ToonEncoder;
+use MischaSigtermans\Toon\Converters\ToonDecoder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
@@ -27,7 +29,10 @@ class ToonService
      */
     public function __construct()
     {
-        $this->toon = new Toon();
+        $this->toon = new Toon(
+            new ToonEncoder(),
+            new ToonDecoder()
+        );
     }
 
     /**
