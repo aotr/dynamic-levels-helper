@@ -11,6 +11,7 @@ use Aotr\DynamicLevelHelper\Console\Commands\LucideCacheCommand;
 use Aotr\DynamicLevelHelper\Console\Commands\SyncCountriesAndStatesJsonFilesCommand;
 use Aotr\DynamicLevelHelper\DynamicHelpersLoader;
 use Aotr\DynamicLevelHelper\Services\LucideIconService;
+use Aotr\DynamicLevelHelper\Services\ToonService;
 use Aotr\DynamicLevelHelper\View\Components\Lucide\DynamicIcon;
 use Illuminate\Support\Facades\Blade;
 use Aotr\DynamicLevelHelper\Macros\ResponseMacros;
@@ -77,6 +78,11 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__ . '/../config/lucide.php' => config_path('lucide.php'),
         ], 'lucide-config');
+
+        // Publish Toon config
+        $this->publishes([
+            __DIR__ . '/../config/toon.php' => config_path('toon.php'),
+        ], 'toon-config');
     }
 
     /**
@@ -136,6 +142,10 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         });
 
         $this->app->alias(LucideIconService::class, 'lucide-icon-service');
+
+        $this->app->singleton('toon-service', function () {
+            return new ToonService();
+        });
     }
 
     /**
@@ -158,6 +168,10 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(
             __DIR__ . '/../config/lucide.php',
             'lucide'
+        );
+        $this->mergeConfigFrom(
+            __DIR__ . '/../config/toon.php',
+            'toon'
         );
     }
 
