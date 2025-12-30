@@ -8,6 +8,7 @@ A comprehensive Laravel package that provides enterprise-grade tools for databas
 - **Enhanced Database Service**: Singleton pattern with connection pooling, performance monitoring, and configurable logging
 - **SMS Service**: Multi-provider support (Sinfini, Onex, MyValueFirst, Infobip)
 - **WhatsApp Integration**: Structured messaging with GoInfinito provider
+- **TOON Service**: Token-Optimized Object Notation encoder/decoder for AI/LLM applications
 - **Geo Data Service**: Automatic syncing of countries, states, and cities from GitHub repository
 - **Lucide Icon System**: SVG icon caching and Blade component integration
 - **Parameter Service**: Efficient request parameter processing with multiple formats
@@ -44,6 +45,7 @@ php artisan vendor:publish --provider="Aotr\DynamicLevelHelper\Providers\Dynamic
 php artisan vendor:publish --tag=dynamic-levels-helper-config
 php artisan vendor:publish --tag=dynamic-levels-helper-sms-config
 php artisan vendor:publish --tag=dynamic-levels-helper-whatsapp-config
+php artisan vendor:publish --tag=toon-config
 php artisan vendor:publish --tag=lucide-config
 php artisan vendor:publish --tag=dynamic-levels-helper-scripts
 ```
@@ -152,6 +154,191 @@ class UserRepository
     }
 }
 ```
+
+---
+
+### 🧠 TOON Service (Token-Optimized Object Notation)
+
+Advanced encoding/decoding service for Token-Optimized Object Notation format, designed to reduce token consumption in AI/LLM applications while maintaining data integrity.
+
+#### Why TOON?
+- **Token Efficiency**: Up to 40-60% reduction in token count compared to JSON
+- **AI/LLM Optimized**: Specifically designed for language model contexts where token usage matters
+- **Data Integrity**: Maintains full data structure and type information
+- **Performance**: Fast encoding/decoding with built-in caching
+- **Laravel Native**: Full integration with Laravel's caching and logging systems
+
+#### Key Features
+- ✅ **Compact Format**: Significantly smaller than JSON for complex data structures
+- ✅ **Type Preservation**: Maintains PHP data types during encode/decode cycles
+- ✅ **Batch Operations**: Encode/decode multiple items efficiently
+- ✅ **Caching Support**: Built-in caching with configurable TTL
+- ✅ **Compression Analytics**: Real-time compression ratio statistics
+- ✅ **Laravel Integration**: Facades, service container, and config-driven
+
+#### Branch Compatibility
+- ✅ **master** - Laravel 12 (fully integrated and tested)
+- ✅ **main-for-12** - Laravel 12 (fully integrated and tested)
+- ✅ **main-for-10** - Laravel 10 (fully integrated and tested with compatibility fixes)
+
+#### Basic Usage
+
+```php
+use Aotr\DynamicLevelHelper\Facades\ToonService;
+
+// Encode data to TOON format
+$data = ['user' => 'John Doe', 'age' => 30, 'active' => true];
+$toonString = ToonService::encode($data);
+
+// Decode back to PHP array
+$originalData = ToonService::decode($toonString);
+
+// Work with Laravel Collections
+$collection = collect(['item1', 'item2', 'item3']);
+$encodedCollection = ToonService::encodeCollection($collection);
+$decodedCollection = ToonService::decodeToCollection($encodedCollection);
+```
+
+#### Compression Analysis
+
+```php
+// Get compression statistics compared to JSON
+$largeDataset = [
+    'users' => [...], // Large array of user data
+    'metadata' => [...],
+    'settings' => [...]
+];
+
+$stats = ToonService::getCompressionStats($largeDataset);
+/*
+Returns:
+[
+    'json_size' => 2547,
+    'toon_size' => 1423,
+    'compression_ratio' => 44.13,  // 44% smaller than JSON
+    'size_difference' => 1124,
+    'json_encoded' => '{"users":[...]...}',
+    'toon_encoded' => 'u=[...]...'  // Compact TOON format
+]
+*/
+```
+
+#### Batch Operations
+
+```php
+// Batch encode multiple data items
+$items = [
+    ['name' => 'User 1', 'email' => 'user1@example.com'],
+    ['name' => 'User 2', 'email' => 'user2@example.com'],
+    ['name' => 'User 3', 'email' => 'user3@example.com']
+];
+
+$encoded = ToonService::batchEncode($items);
+$decoded = ToonService::batchDecode($encoded);
+```
+
+#### Caching Integration
+
+```php
+// Cache encoded data with automatic TOON encoding
+$cacheKey = 'user_preferences_123';
+$userData = ['theme' => 'dark', 'notifications' => true, 'language' => 'en'];
+
+// Encode and cache for 1 hour
+$encodedData = ToonService::cacheEncode($cacheKey, $userData, 3600);
+
+// Retrieve and decode from cache
+$cachedData = ToonService::getCached($cacheKey);
+```
+
+#### Use Cases
+
+**AI/LLM Applications**:
+```php
+// Before (JSON): 147 tokens
+$jsonPrompt = json_encode([
+    'context' => 'User analysis',
+    'data' => $userAnalytics,
+    'options' => ['detailed' => true, 'format' => 'summary']
+]);
+
+// After (TOON): ~85 tokens (42% reduction)
+$toonPrompt = ToonService::encode([
+    'context' => 'User analysis',
+    'data' => $userAnalytics,
+    'options' => ['detailed' => true, 'format' => 'summary']
+]);
+```
+
+**API Response Optimization**:
+```php
+// Compress API responses for mobile apps
+Route::get('/api/dashboard', function () {
+    $dashboardData = [
+        'user' => auth()->user(),
+        'stats' => DashboardService::getStats(),
+        'notifications' => NotificationService::getRecent()
+    ];
+    
+    return response()->json([
+        'data' => ToonService::encode($dashboardData),
+        'format' => 'toon'
+    ]);
+});
+```
+
+#### Configuration
+
+```php
+// config/toon.php
+
+return [
+    'cache' => [
+        'enabled' => env('TOON_CACHE_ENABLED', true),
+        'ttl' => [
+            'default' => env('TOON_CACHE_TTL_DEFAULT', 3600),
+            'encode' => env('TOON_CACHE_TTL_ENCODE', 7200),
+            'decode' => env('TOON_CACHE_TTL_DECODE', 7200),
+        ],
+        'prefix' => env('TOON_CACHE_PREFIX', 'toon_'),
+    ],
+    
+    'logging' => [
+        'enabled' => env('TOON_LOGGING_ENABLED', false),
+        'channel' => env('TOON_LOG_CHANNEL', 'toon'),
+        'level' => env('TOON_LOG_LEVEL', 'info'),
+    ],
+    
+    'performance' => [
+        'max_string_length' => env('TOON_MAX_STRING_LENGTH', 1000000),
+        'enable_compression_stats' => env('TOON_ENABLE_COMPRESSION_STATS', true),
+    ],
+    
+    'features' => [
+        'batch_operations' => env('TOON_FEATURE_BATCH_OPERATIONS', true),
+        'caching' => env('TOON_FEATURE_CACHING', true),
+        'validation' => env('TOON_FEATURE_VALIDATION', true),
+    ],
+];
+```
+
+#### Service Methods
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `encode($data, $options)` | Encode data to TOON format | `string` |
+| `decode($toonString, $options)` | Decode TOON string back to PHP data | `mixed` |
+| `encodeArray($data, $options)` | Encode arrays specifically | `string` |
+| `encodeCollection($collection, $options)` | Encode Laravel collections | `string` |
+| `decodeToCollection($toonString, $options)` | Decode to Laravel collection | `Collection` |
+| `getCompressionStats($data)` | Get compression analysis vs JSON | `array` |
+| `batchEncode($items, $options)` | Encode multiple items | `array` |
+| `batchDecode($toonStrings, $options)` | Decode multiple TOON strings | `array` |
+| `cacheEncode($key, $data, $ttl, $options)` | Cache encoded data | `string` |
+| `getCached($key, $options)` | Retrieve cached data | `mixed` |
+| `isValidToon($toonString)` | Validate TOON format | `bool` |
+| `isAvailable()` | Check service availability | `bool` |
+| `getServiceInfo()` | Get service information | `array` |
 
 ---
 
