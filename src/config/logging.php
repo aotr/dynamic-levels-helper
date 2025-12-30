@@ -26,5 +26,11 @@ return [
             'level' => 'debug',
             'days' => 7,
         ],
+        'toon' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/third_party/toon/log.log'),
+            'level' => 'debug',
+            'days' => 7,
+        ],
     ],
 ];

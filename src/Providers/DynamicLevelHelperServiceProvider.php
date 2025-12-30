@@ -18,6 +18,7 @@ use Aotr\DynamicLevelHelper\Middleware\BasicAuth;
 use Aotr\DynamicLevelHelper\Providers\EnhancedDBServiceProvider;
 use Aotr\DynamicLevelHelper\Services\SMS\SmsProviderInterface;
 use Aotr\DynamicLevelHelper\Services\SMS\SmsService;
+use Aotr\DynamicLevelHelper\Services\ToonService;
 use Illuminate\Support\ServiceProvider;
 
 final class DynamicLevelHelperServiceProvider extends ServiceProvider
@@ -68,6 +69,10 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             __DIR__ . '/../config/dynamic-levels-helper-whatsapp.php' => config_path('dynamic-levels-helper-whatsapp.php'),
         ], 'dynamic-levels-helper-whatsapp-config');
 
+        $this->publishes([
+            __DIR__ . '/../config/toon.php' => config_path('toon.php'),
+        ], 'toon-config');
+
         // Publish geo data sync script
         $this->publishes([
             __DIR__ . '/../../scripts/sync-geo-data.sh' => base_path('scripts/sync-geo-data.sh'),
@@ -79,6 +84,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             __DIR__ . '/../config/dynamic-levels-helper-stp.php' => config_path('dynamic-levels-helper-stp.php'),
             __DIR__ . '/../config/dynamic-levels-helper-sms.php' => config_path('dynamic-levels-helper-sms.php'),
             __DIR__ . '/../config/dynamic-levels-helper-whatsapp.php' => config_path('dynamic-levels-helper-whatsapp.php'),
+            __DIR__ . '/../config/toon.php' => config_path('toon.php'),
             __DIR__ . '/../../scripts/sync-geo-data.sh' => base_path('scripts/sync-geo-data.sh'),
         ], 'dynamic-levels-helper');
 
@@ -145,6 +151,11 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         });
 
         $this->app->alias(LucideIconService::class, 'lucide-icon-service');
+
+        // Register ToonService
+        $this->app->singleton('toon-service', function () {
+            return new ToonService();
+        });
     }
 
     /**
@@ -167,6 +178,10 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(
             __DIR__ . '/../config/lucide.php',
             'lucide'
+        );
+        $this->mergeConfigFrom(
+            __DIR__ . '/../config/toon.php',
+            'toon'
         );
     }
 
