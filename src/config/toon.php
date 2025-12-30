@@ -3,83 +3,97 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | Toon API Configuration
+    | TOON Configuration
     |--------------------------------------------------------------------------
     |
-    | Configuration settings for the Toon smart home integration.
-    | This includes API credentials and connection settings.
+    | Configuration options for the TOON (Token-Optimized Object Notation)
+    | encoding/decoding service integration.
     |
     */
 
     /*
     |--------------------------------------------------------------------------
-    | Toon API Credentials
+    | Caching Configuration
     |--------------------------------------------------------------------------
     |
-    | Your Toon API credentials. You can obtain these from the Toon developer
-    | portal after registering your application.
+    | TOON encoding/decoding caching settings to improve performance and reduce
+    | computational overhead for frequently used data.
     |
     */
-    'client_id' => env('TOON_CLIENT_ID'),
-    'client_secret' => env('TOON_CLIENT_SECRET'),
-    'redirect_uri' => env('TOON_REDIRECT_URI'),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Toon API Base URL
-    |--------------------------------------------------------------------------
-    |
-    | The base URL for the Toon API. This should not normally need to be changed.
-    |
-    */
-    'base_url' => env('TOON_BASE_URL', 'https://api.toon.eu/toon/v3'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Default Agreement ID
-    |--------------------------------------------------------------------------
-    |
-    | Your default Toon agreement/contract ID. This can be found in your
-    | Toon account settings.
-    |
-    */
-    'agreement_id' => env('TOON_AGREEMENT_ID'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Cache Settings
-    |--------------------------------------------------------------------------
-    |
-    | Configuration for caching Toon API responses to improve performance
-    | and reduce API calls.
-    |
-    */
     'cache' => [
         'enabled' => env('TOON_CACHE_ENABLED', true),
-        'ttl' => env('TOON_CACHE_TTL', 300), // 5 minutes
-        'key_prefix' => env('TOON_CACHE_PREFIX', 'toon_'),
+        'ttl' => [
+            'default' => env('TOON_CACHE_TTL_DEFAULT', 3600), // 1 hour
+            'encode' => env('TOON_CACHE_TTL_ENCODE', 7200), // 2 hours
+            'decode' => env('TOON_CACHE_TTL_DECODE', 7200), // 2 hours
+        ],
+        'prefix' => env('TOON_CACHE_PREFIX', 'toon_'),
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Request Timeout
+    | Logging Configuration
     |--------------------------------------------------------------------------
     |
-    | HTTP request timeout in seconds for Toon API calls.
+    | Logging settings for TOON encoding/decoding operations.
     |
     */
-    'timeout' => env('TOON_TIMEOUT', 30),
+
+    'logging' => [
+        'enabled' => env('TOON_LOGGING_ENABLED', false),
+        'channel' => env('TOON_LOG_CHANNEL', 'toon'),
+        'level' => env('TOON_LOG_LEVEL', 'info'),
+        'log_operations' => env('TOON_LOG_OPERATIONS', true),
+        'log_errors' => env('TOON_LOG_ERRORS', true),
+        'log_performance' => env('TOON_LOG_PERFORMANCE', false),
+    ],
 
     /*
     |--------------------------------------------------------------------------
-    | Logging
+    | Encoding Configuration
     |--------------------------------------------------------------------------
     |
-    | Enable logging for Toon API requests and responses.
+    | Default encoding options for TOON format conversion.
     |
     */
-    'logging' => [
-        'enabled' => env('TOON_LOGGING_ENABLED', true),
-        'channel' => env('TOON_LOGGING_CHANNEL', 'toon'),
+
+    'encoding' => [
+        'default_options' => [
+            'compress' => env('TOON_ENCODING_COMPRESS', true),
+            'optimize' => env('TOON_ENCODING_OPTIMIZE', true),
+        ],
+        'batch_size' => env('TOON_BATCH_SIZE', 100), // Maximum items per batch operation
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Performance Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Performance-related settings for TOON operations.
+    |
+    */
+
+    'performance' => [
+        'max_string_length' => env('TOON_MAX_STRING_LENGTH', 1000000), // 1MB
+        'enable_compression_stats' => env('TOON_ENABLE_COMPRESSION_STATS', true),
+        'track_performance' => env('TOON_TRACK_PERFORMANCE', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Features
+    |--------------------------------------------------------------------------
+    |
+    | Enable or disable specific TOON features.
+    |
+    */
+
+    'features' => [
+        'batch_operations' => env('TOON_FEATURE_BATCH_OPERATIONS', true),
+        'caching' => env('TOON_FEATURE_CACHING', true),
+        'validation' => env('TOON_FEATURE_VALIDATION', true),
+        'compression_stats' => env('TOON_FEATURE_COMPRESSION_STATS', true),
     ],
 ];
