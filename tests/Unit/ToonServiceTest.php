@@ -3,228 +3,197 @@
 declare(strict_types=1);
 
 use Aotr\DynamicLevelHelper\Services\ToonService;
+use MischaSigtermans\Toon\Toon;
 use Mockery as m;
 
 beforeEach(function () {
-    $this->toonApi = m::mock('\MischaSigtermans\ToonApi\ToonApi');
     $this->toonService = new ToonService();
-    
-    // We would need to use reflection to inject the mock in a real scenario
-    // For now, we'll mock the service facade
 });
 
 afterEach(function () {
     m::close();
 });
 
-it('can get thermostat information', function () {
-    $mockData = [
-        'currentTemp' => 21.5,
-        'currentSetpoint' => 22.0,
-        'programState' => 'home',
-        'activeState' => 'on',
-        'nextSetpoint' => 20.0,
-        'nextTime' => '2024-01-01T18:00:00Z'
-    ];
-
-    $this->toonApi->shouldReceive('getThermostatInfo')
-        ->once()
-        ->andReturn($mockData);
-
-    expect($mockData)->toBeArray()
-        ->and($mockData)->toHaveKey('currentTemp')
-        ->and($mockData)->toHaveKey('currentSetpoint')
-        ->and($mockData['currentTemp'])->toBe(21.5);
+it('can encode data to TOON format', function () {
+    $data = ['name' => 'John', 'age' => 30, 'active' => true];
+    $encoded = $this->toonService->encode($data);
+    
+    expect($encoded)->toBeString()
+        ->and($encoded)->not->toBeEmpty();
 });
 
-it('can set temperature', function () {
-    $targetTemp = 23.5;
-    $mockResponse = [
-        'success' => true,
-        'newSetpoint' => $targetTemp,
-        'message' => 'Temperature set successfully'
-    ];
-
-    $this->toonApi->shouldReceive('setTemperature')
-        ->once()
-        ->with($targetTemp)
-        ->andReturn($mockResponse);
-
-    expect($mockResponse)->toBeArray()
-        ->and($mockResponse['success'])->toBeTrue()
-        ->and($mockResponse['newSetpoint'])->toBe($targetTemp);
+it('can decode TOON string back to original data', function () {
+    $originalData = ['name' => 'John', 'age' => 30, 'active' => true];
+    $encoded = $this->toonService->encode($originalData);
+    $decoded = $this->toonService->decode($encoded);
+    
+    expect($decoded)->toBeArray()
+        ->and($decoded)->toEqual($originalData);
 });
 
-it('can get energy usage data', function () {
-    $mockData = [
-        'elecUsageFlowHigh' => 125,
-        'elecUsageFlowLow' => 85,
-        'elecUsageFlow' => 210,
-        'gasUsage' => 1250,
-        'gasUsageFlow' => 0.5,
-        'elecProdFlowHigh' => 50,
-        'elecProdFlowLow' => 30,
-    ];
-
-    $this->toonApi->shouldReceive('getEnergyUsage')
-        ->once()
-        ->andReturn($mockData);
-
-    expect($mockData)->toBeArray()
-        ->and($mockData)->toHaveKey('elecUsageFlow')
-        ->and($mockData)->toHaveKey('gasUsage')
-        ->and($mockData['elecUsageFlow'])->toBe(210);
+it('can encode arrays', function () {
+    $array = [1, 2, 3, 'test', true];
+    $encoded = $this->toonService->encodeArray($array);
+    
+    expect($encoded)->toBeString()
+        ->and($encoded)->not->toBeEmpty();
 });
 
-it('can get device information', function () {
-    $mockData = [
-        'deviceId' => 'toon-device-123',
-        'displayName' => 'Toon Thermostat',
-        'isOnline' => true,
-        'deviceType' => 'thermostat'
-    ];
-
-    $this->toonApi->shouldReceive('getDeviceInfo')
-        ->once()
-        ->andReturn($mockData);
-
-    expect($mockData)->toBeArray()
-        ->and($mockData)->toHaveKey('deviceId')
-        ->and($mockData['isOnline'])->toBeTrue();
+it('can encode collections', function () {
+    $collection = collect(['a' => 1, 'b' => 2, 'c' => 3]);
+    $encoded = $this->toonService->encodeCollection($collection);
+    
+    expect($encoded)->toBeString()
+        ->and($encoded)->not->toBeEmpty();
 });
 
-it('can get smart plug data', function () {
-    $deviceId = 'smart-plug-1';
-    $mockData = [
-        'deviceId' => $deviceId,
-        'currentWattage' => 25.5,
-        'todayUsage' => 1.2,
-        'plugState' => 'on'
-    ];
-
-    $this->toonApi->shouldReceive('getSmartPlugData')
-        ->once()
-        ->with($deviceId)
-        ->andReturn($mockData);
-
-    expect($mockData)->toBeArray()
-        ->and($mockData['deviceId'])->toBe($deviceId)
-        ->and($mockData['currentWattage'])->toBe(25.5)
-        ->and($mockData['plugState'])->toBe('on');
+it('can decode to collection', function () {
+    $data = ['a' => 1, 'b' => 2, 'c' => 3];
+    $encoded = $this->toonService->encode($data);
+    $collection = $this->toonService->decodeToCollection($encoded);
+    
+    expect($collection)->toBeInstanceOf(\Illuminate\Support\Collection::class)
+        ->and($collection->toArray())->toEqual($data);
 });
 
-it('can set smart plug state', function () {
-    $deviceId = 'smart-plug-1';
-    $state = true;
-    $mockResponse = [
-        'success' => true,
-        'deviceId' => $deviceId,
-        'newState' => 'on',
-        'message' => 'Smart plug turned on'
+it('can get compression stats', function () {
+    $data = [
+        'user' => 'John Doe',
+        'email' => 'john@example.com',
+        'age' => 30,
+        'active' => true,
+        'preferences' => ['theme' => 'dark', 'notifications' => true]
     ];
-
-    $this->toonApi->shouldReceive('setSmartPlugState')
-        ->once()
-        ->with($deviceId, $state)
-        ->andReturn($mockResponse);
-
-    expect($mockResponse)->toBeArray()
-        ->and($mockResponse['success'])->toBeTrue()
-        ->and($mockResponse['deviceId'])->toBe($deviceId)
-        ->and($mockResponse['newState'])->toBe('on');
+    
+    $stats = $this->toonService->getCompressionStats($data);
+    
+    expect($stats)->toBeArray()
+        ->and($stats)->toHaveKey('json_size')
+        ->and($stats)->toHaveKey('toon_size')
+        ->and($stats)->toHaveKey('compression_ratio')
+        ->and($stats)->toHaveKey('size_difference')
+        ->and($stats['json_size'])->toBeGreaterThan(0)
+        ->and($stats['toon_size'])->toBeGreaterThan(0);
 });
 
-it('can get solar data', function () {
-    $mockData = [
-        'currentPower' => 1250,
-        'todayYield' => 15.6,
-        'totalYield' => 2500.8,
-        'isProducing' => true
+it('can batch encode multiple items', function () {
+    $items = [
+        ['name' => 'John', 'age' => 30],
+        ['name' => 'Jane', 'age' => 25],
+        ['name' => 'Bob', 'age' => 35]
     ];
-
-    $this->toonApi->shouldReceive('getSolarData')
-        ->once()
-        ->andReturn($mockData);
-
-    expect($mockData)->toBeArray()
-        ->and($mockData)->toHaveKey('currentPower')
-        ->and($mockData['isProducing'])->toBeTrue()
-        ->and($mockData['todayYield'])->toBe(15.6);
+    
+    $encoded = $this->toonService->batchEncode($items);
+    
+    expect($encoded)->toBeArray()
+        ->and($encoded)->toHaveCount(3)
+        ->and($encoded[0])->toBeString()
+        ->and($encoded[1])->toBeString()
+        ->and($encoded[2])->toBeString();
 });
 
-it('can get programs list', function () {
-    $mockData = collect([
-        [
-            'programId' => 1,
-            'name' => 'Home',
-            'temperature' => 22.0,
-            'isActive' => true
+it('can batch decode multiple TOON strings', function () {
+    $items = [
+        ['name' => 'John', 'age' => 30],
+        ['name' => 'Jane', 'age' => 25]
+    ];
+    
+    $encoded = $this->toonService->batchEncode($items);
+    $decoded = $this->toonService->batchDecode($encoded);
+    
+    expect($decoded)->toBeArray()
+        ->and($decoded)->toHaveCount(2)
+        ->and($decoded[0])->toEqual($items[0])
+        ->and($decoded[1])->toEqual($items[1]);
+});
+
+it('can validate TOON strings', function () {
+    $data = ['test' => 'data'];
+    $validToon = $this->toonService->encode($data);
+    $invalidToon = 'invalid-toon-string';
+    
+    expect($this->toonService->isValidToon($validToon))->toBeTrue()
+        ->and($this->toonService->isValidToon($invalidToon))->toBeFalse();
+});
+
+it('reports service availability', function () {
+    expect($this->toonService->isAvailable())->toBeTrue();
+});
+
+it('can get service information', function () {
+    $info = $this->toonService->getServiceInfo();
+    
+    expect($info)->toBeArray()
+        ->and($info)->toHaveKey('service')
+        ->and($info)->toHaveKey('description')
+        ->and($info)->toHaveKey('available')
+        ->and($info)->toHaveKey('package')
+        ->and($info['service'])->toBe('TOON Service')
+        ->and($info['available'])->toBeTrue();
+});
+
+it('handles encoding errors gracefully', function () {
+    // Create a resource that cannot be encoded
+    $resource = fopen('php://memory', 'r');
+    
+    expect(fn() => $this->toonService->encode($resource))
+        ->toThrow(\Exception::class);
+        
+    fclose($resource);
+});
+
+it('handles decoding errors gracefully', function () {
+    expect(fn() => $this->toonService->decode('invalid-toon-format'))
+        ->toThrow(\Exception::class);
+});
+
+it('can encode complex nested data structures', function () {
+    $complexData = [
+        'users' => [
+            ['id' => 1, 'name' => 'John', 'meta' => ['active' => true, 'role' => 'admin']],
+            ['id' => 2, 'name' => 'Jane', 'meta' => ['active' => false, 'role' => 'user']]
         ],
-        [
-            'programId' => 2,
-            'name' => 'Away',
-            'temperature' => 18.0,
-            'isActive' => false
-        ]
-    ]);
-
-    // Since getPrograms returns a Collection, we mock it appropriately
-    expect($mockData)->toBeInstanceOf(\Illuminate\Support\Collection::class)
-        ->and($mockData)->toHaveCount(2)
-        ->and($mockData->first()['name'])->toBe('Home');
-});
-
-it('can check availability', function () {
-    // Test when service is available
-    expect(true)->toBeTrue(); // Mock service availability
-
-    // Test when service is unavailable
-    expect(false)->toBeFalse(); // Mock service unavailability
-});
-
-it('can get dashboard data', function () {
-    $mockData = [
-        'thermostat' => [
-            'currentTemp' => 21.5,
-            'setpoint' => 22.0
+        'settings' => [
+            'app' => ['theme' => 'dark', 'lang' => 'en'],
+            'features' => ['notifications' => true, 'analytics' => false]
         ],
-        'energy' => [
-            'usage' => 210,
-            'production' => 80
-        ],
-        'smartPlugs' => [
-            'total' => 3,
-            'active' => 2
-        ]
+        'timestamp' => time()
     ];
-
-    expect($mockData)->toBeArray()
-        ->and($mockData)->toHaveKey('thermostat')
-        ->and($mockData)->toHaveKey('energy')
-        ->and($mockData)->toHaveKey('smartPlugs')
-        ->and($mockData['thermostat']['currentTemp'])->toBe(21.5);
+    
+    $encoded = $this->toonService->encode($complexData);
+    $decoded = $this->toonService->decode($encoded);
+    
+    expect($decoded)->toEqual($complexData);
 });
 
-it('handles api errors gracefully', function () {
-    // Test error handling
-    $this->toonApi->shouldReceive('getThermostatInfo')
-        ->once()
-        ->andThrow(new \Exception('API connection failed'));
-
-    expect(fn() => $this->toonApi->getThermostatInfo())
-        ->toThrow(\Exception::class, 'API connection failed');
-});
-
-it('validates temperature ranges', function () {
-    $validTemps = [15.0, 20.5, 25.0, 30.0];
-    $invalidTemps = [5.0, 35.0, -10.0];
-
-    foreach ($validTemps as $temp) {
-        expect($temp)->toBeGreaterThanOrEqual(6.0)
-            ->and($temp)->toBeLessThanOrEqual(32.0);
+it('shows compression benefits for large data', function () {
+    // Create a large data structure with repetitive content
+    $largeData = [];
+    for ($i = 0; $i < 100; $i++) {
+        $largeData[] = [
+            'id' => $i,
+            'name' => "User {$i}",
+            'email' => "user{$i}@example.com",
+            'active' => true,
+            'role' => 'user',
+            'created_at' => '2024-01-01T00:00:00Z',
+            'preferences' => [
+                'theme' => 'light',
+                'notifications' => true,
+                'newsletter' => false
+            ]
+        ];
     }
+    
+    $stats = $this->toonService->getCompressionStats($largeData);
+    
+    expect($stats['json_size'])->toBeGreaterThan($stats['toon_size'])
+        ->and($stats['compression_ratio'])->toBeGreaterThan(0);
+});
 
-    foreach ($invalidTemps as $temp) {
-        expect($temp < 6.0 || $temp > 32.0)->toBeTrue();
-    }
+it('can clear cache when enabled', function () {
+    // This test would need cache configuration to be properly tested
+    $result = $this->toonService->clearCache();
+    
+    expect($result)->toBeBool();
 });

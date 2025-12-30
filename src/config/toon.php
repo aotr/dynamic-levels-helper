@@ -3,39 +3,30 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | Toon API Configuration
+    | TOON Configuration
     |--------------------------------------------------------------------------
     |
-    | Configuration options for the Toon Smart Home API integration.
+    | Configuration options for the TOON (Token-Optimized Object Notation)
+    | encoding/decoding service integration.
     |
     */
-
-    'api' => [
-        'client_id' => env('TOON_CLIENT_ID'),
-        'client_secret' => env('TOON_CLIENT_SECRET'),
-        'username' => env('TOON_USERNAME'),
-        'password' => env('TOON_PASSWORD'),
-        'agreement_id' => env('TOON_AGREEMENT_ID'),
-        'base_url' => env('TOON_BASE_URL', 'https://api.toon.eu'),
-    ],
 
     /*
     |--------------------------------------------------------------------------
     | Caching Configuration
     |--------------------------------------------------------------------------
     |
-    | Toon API response caching settings to improve performance and reduce
-    | API calls. Adjust cache TTL values as needed.
+    | TOON encoding/decoding caching settings to improve performance and reduce
+    | computational overhead for frequently used data.
     |
     */
 
     'cache' => [
         'enabled' => env('TOON_CACHE_ENABLED', true),
         'ttl' => [
-            'thermostat' => env('TOON_CACHE_TTL_THERMOSTAT', 300), // 5 minutes
-            'energy' => env('TOON_CACHE_TTL_ENERGY', 600), // 10 minutes
-            'devices' => env('TOON_CACHE_TTL_DEVICES', 300), // 5 minutes
-            'programs' => env('TOON_CACHE_TTL_PROGRAMS', 3600), // 1 hour
+            'default' => env('TOON_CACHE_TTL_DEFAULT', 3600), // 1 hour
+            'encode' => env('TOON_CACHE_TTL_ENCODE', 7200), // 2 hours
+            'decode' => env('TOON_CACHE_TTL_DECODE', 7200), // 2 hours
         ],
         'prefix' => env('TOON_CACHE_PREFIX', 'toon_'),
     ],
@@ -45,7 +36,7 @@ return [
     | Logging Configuration
     |--------------------------------------------------------------------------
     |
-    | Logging settings for Toon API requests and responses.
+    | Logging settings for TOON encoding/decoding operations.
     |
     */
 
@@ -53,24 +44,41 @@ return [
         'enabled' => env('TOON_LOGGING_ENABLED', false),
         'channel' => env('TOON_LOG_CHANNEL', 'toon'),
         'level' => env('TOON_LOG_LEVEL', 'info'),
-        'log_requests' => env('TOON_LOG_REQUESTS', true),
-        'log_responses' => env('TOON_LOG_RESPONSES', false),
+        'log_operations' => env('TOON_LOG_OPERATIONS', true),
+        'log_errors' => env('TOON_LOG_ERRORS', true),
+        'log_performance' => env('TOON_LOG_PERFORMANCE', false),
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Request Configuration
+    | Encoding Configuration
     |--------------------------------------------------------------------------
     |
-    | HTTP request settings for Toon API calls.
+    | Default encoding options for TOON format conversion.
     |
     */
 
-    'timeout' => env('TOON_TIMEOUT', 30),
-    'retry' => [
-        'enabled' => env('TOON_RETRY_ENABLED', true),
-        'attempts' => env('TOON_RETRY_ATTEMPTS', 3),
-        'delay' => env('TOON_RETRY_DELAY', 1000), // milliseconds
+    'encoding' => [
+        'default_options' => [
+            'compress' => env('TOON_ENCODING_COMPRESS', true),
+            'optimize' => env('TOON_ENCODING_OPTIMIZE', true),
+        ],
+        'batch_size' => env('TOON_BATCH_SIZE', 100), // Maximum items per batch operation
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Performance Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Performance-related settings for TOON operations.
+    |
+    */
+
+    'performance' => [
+        'max_string_length' => env('TOON_MAX_STRING_LENGTH', 1000000), // 1MB
+        'enable_compression_stats' => env('TOON_ENABLE_COMPRESSION_STATS', true),
+        'track_performance' => env('TOON_TRACK_PERFORMANCE', false),
     ],
 
     /*
@@ -78,14 +86,14 @@ return [
     | Features
     |--------------------------------------------------------------------------
     |
-    | Enable or disable specific Toon features.
+    | Enable or disable specific TOON features.
     |
     */
 
     'features' => [
-        'thermostat' => env('TOON_FEATURE_THERMOSTAT', true),
-        'energy_monitoring' => env('TOON_FEATURE_ENERGY_MONITORING', true),
-        'smart_plugs' => env('TOON_FEATURE_SMART_PLUGS', true),
-        'solar_data' => env('TOON_FEATURE_SOLAR_DATA', true),
+        'batch_operations' => env('TOON_FEATURE_BATCH_OPERATIONS', true),
+        'caching' => env('TOON_FEATURE_CACHING', true),
+        'validation' => env('TOON_FEATURE_VALIDATION', true),
+        'compression_stats' => env('TOON_FEATURE_COMPRESSION_STATS', true),
     ],
 ];

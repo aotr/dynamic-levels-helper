@@ -9,22 +9,20 @@ use Illuminate\Support\Facades\Facade;
 /**
  * ToonService Facade
  * 
- * @method static array getThermostatInfo()
- * @method static array setTemperature(float $temperature)
- * @method static array getEnergyUsage()
- * @method static array getEnergyUsageByPeriod(string $period)
- * @method static array getAgreements()
- * @method static array getDeviceInfo()
- * @method static \Illuminate\Support\Collection getAllDevicesStatus()
- * @method static array setProgram(int $programId)
- * @method static array getCurrentProgram()
- * @method static \Illuminate\Support\Collection getPrograms()
- * @method static array getSmartPlugData(string $deviceId)
- * @method static array setSmartPlugState(string $deviceId, bool $state)
- * @method static array getSolarData()
- * @method static array getGasUsage()
+ * @method static string encode(mixed $data, array $options = [])
+ * @method static mixed decode(string $toonString, array $options = [])
+ * @method static string encodeArray(array $data, array $options = [])
+ * @method static string encodeCollection(\Illuminate\Support\Collection $collection, array $options = [])
+ * @method static \Illuminate\Support\Collection decodeToCollection(string $toonString, array $options = [])
+ * @method static array getCompressionStats(mixed $data)
+ * @method static array batchEncode(array $items, array $options = [])
+ * @method static array batchDecode(array $toonStrings, array $options = [])
+ * @method static string cacheEncode(string $key, mixed $data, int $ttl = 3600, array $options = [])
+ * @method static mixed getCached(string $key, array $options = [])
+ * @method static bool isValidToon(string $toonString)
  * @method static bool isAvailable()
- * @method static array getDashboardData()
+ * @method static array getServiceInfo()
+ * @method static bool clearCache()
  * 
  * @see \Aotr\DynamicLevelHelper\Services\ToonService
  */
