@@ -17,7 +17,7 @@ afterEach(function () {
 it('can encode data to TOON format', function () {
     $data = ['name' => 'John', 'age' => 30, 'active' => true];
     $encoded = $this->toonService->encode($data);
-    
+
     expect($encoded)->toBeString()
         ->and($encoded)->not->toBeEmpty();
 });
@@ -26,7 +26,7 @@ it('can decode TOON string back to original data', function () {
     $originalData = ['name' => 'John', 'age' => 30, 'active' => true];
     $encoded = $this->toonService->encode($originalData);
     $decoded = $this->toonService->decode($encoded);
-    
+
     expect($decoded)->toBeArray()
         ->and($decoded)->toEqual($originalData);
 });
@@ -34,7 +34,7 @@ it('can decode TOON string back to original data', function () {
 it('can encode arrays', function () {
     $array = [1, 2, 3, 'test', true];
     $encoded = $this->toonService->encodeArray($array);
-    
+
     expect($encoded)->toBeString()
         ->and($encoded)->not->toBeEmpty();
 });
@@ -42,7 +42,7 @@ it('can encode arrays', function () {
 it('can encode collections', function () {
     $collection = collect(['a' => 1, 'b' => 2, 'c' => 3]);
     $encoded = $this->toonService->encodeCollection($collection);
-    
+
     expect($encoded)->toBeString()
         ->and($encoded)->not->toBeEmpty();
 });
@@ -51,7 +51,7 @@ it('can decode to collection', function () {
     $data = ['a' => 1, 'b' => 2, 'c' => 3];
     $encoded = $this->toonService->encode($data);
     $collection = $this->toonService->decodeToCollection($encoded);
-    
+
     expect($collection)->toBeInstanceOf(\Illuminate\Support\Collection::class)
         ->and($collection->toArray())->toEqual($data);
 });
@@ -64,9 +64,9 @@ it('can get compression stats', function () {
         'active' => true,
         'preferences' => ['theme' => 'dark', 'notifications' => true]
     ];
-    
+
     $stats = $this->toonService->getCompressionStats($data);
-    
+
     expect($stats)->toBeArray()
         ->and($stats)->toHaveKey('json_size')
         ->and($stats)->toHaveKey('toon_size')
@@ -82,9 +82,9 @@ it('can batch encode multiple items', function () {
         ['name' => 'Jane', 'age' => 25],
         ['name' => 'Bob', 'age' => 35]
     ];
-    
+
     $encoded = $this->toonService->batchEncode($items);
-    
+
     expect($encoded)->toBeArray()
         ->and($encoded)->toHaveCount(3)
         ->and($encoded[0])->toBeString()
@@ -97,10 +97,10 @@ it('can batch decode multiple TOON strings', function () {
         ['name' => 'John', 'age' => 30],
         ['name' => 'Jane', 'age' => 25]
     ];
-    
+
     $encoded = $this->toonService->batchEncode($items);
     $decoded = $this->toonService->batchDecode($encoded);
-    
+
     expect($decoded)->toBeArray()
         ->and($decoded)->toHaveCount(2)
         ->and($decoded[0])->toEqual($items[0])
@@ -111,7 +111,7 @@ it('can validate TOON strings', function () {
     $data = ['test' => 'data'];
     $validToon = $this->toonService->encode($data);
     $invalidToon = '{"invalid": "json"}'; // Use valid JSON as "invalid" TOON
-    
+
     expect($this->toonService->isValidToon($validToon))->toBeTrue();
     // Note: The TOON decoder might be lenient with some invalid formats
     // so we just test that it handles basic validation
@@ -123,7 +123,7 @@ it('reports service availability', function () {
 
 it('can get service information', function () {
     $info = $this->toonService->getServiceInfo();
-    
+
     expect($info)->toBeArray()
         ->and($info)->toHaveKey('service')
         ->and($info)->toHaveKey('description')
@@ -156,10 +156,10 @@ it('can encode complex nested data structures', function () {
         ],
         'timestamp' => time()
     ];
-    
+
     $encoded = $this->toonService->encode($complexData);
     $decoded = $this->toonService->decode($encoded);
-    
+
     expect($decoded)->toEqual($complexData);
 });
 
@@ -181,9 +181,9 @@ it('shows compression benefits for large data', function () {
             ]
         ];
     }
-    
+
     $stats = $this->toonService->getCompressionStats($largeData);
-    
+
     expect($stats['json_size'])->toBeGreaterThan($stats['toon_size'])
         ->and($stats['compression_ratio'])->toBeGreaterThan(0);
 });
@@ -191,6 +191,6 @@ it('shows compression benefits for large data', function () {
 it('can clear cache when enabled', function () {
     // This test would need cache configuration to be properly tested
     $result = $this->toonService->clearCache();
-    
+
     expect($result)->toBeBool();
 });

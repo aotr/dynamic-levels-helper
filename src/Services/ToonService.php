@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Cache;
 
 /**
  * ToonService - A service for encoding and decoding TOON (Token-Optimized Object Notation) format
- * 
+ *
  * This service provides methods to work with TOON format for compact data representation
  * which is useful for AI/LLM applications where token efficiency matters.
  */
@@ -37,7 +37,7 @@ class ToonService
 
     /**
      * Encode data to TOON format
-     * 
+     *
      * @param mixed $data The data to encode
      * @param array $options Encoding options
      * @return string The TOON encoded string
@@ -55,7 +55,7 @@ class ToonService
 
     /**
      * Decode TOON format string to PHP data
-     * 
+     *
      * @param string $toonString The TOON encoded string
      * @param array $options Decoding options
      * @return mixed The decoded data
@@ -73,7 +73,7 @@ class ToonService
 
     /**
      * Encode array data to TOON format
-     * 
+     *
      * @param array $data The array to encode
      * @param array $options Encoding options
      * @return string The TOON encoded string
@@ -85,7 +85,7 @@ class ToonService
 
     /**
      * Encode collection to TOON format
-     * 
+     *
      * @param Collection $collection The collection to encode
      * @param array $options Encoding options
      * @return string The TOON encoded string
@@ -97,7 +97,7 @@ class ToonService
 
     /**
      * Decode TOON string to Collection
-     * 
+     *
      * @param string $toonString The TOON encoded string
      * @param array $options Decoding options
      * @return Collection The decoded data as collection
@@ -110,7 +110,7 @@ class ToonService
 
     /**
      * Get compression ratio compared to JSON
-     * 
+     *
      * @param mixed $data The data to compare
      * @return array Compression statistics
      */
@@ -118,7 +118,7 @@ class ToonService
     {
         $jsonEncoded = json_encode($data);
         $toonEncoded = $this->encode($data);
-        
+
         $jsonSize = strlen($jsonEncoded);
         $toonSize = strlen($toonEncoded);
         $compressionRatio = $jsonSize > 0 ? ($jsonSize - $toonSize) / $jsonSize * 100 : 0;
@@ -135,7 +135,7 @@ class ToonService
 
     /**
      * Batch encode multiple data items
-     * 
+     *
      * @param array $items Array of data items to encode
      * @param array $options Encoding options
      * @return array Array of encoded strings
@@ -156,7 +156,7 @@ class ToonService
 
     /**
      * Batch decode multiple TOON strings
-     * 
+     *
      * @param array $toonStrings Array of TOON encoded strings
      * @param array $options Decoding options
      * @return array Array of decoded data
@@ -177,7 +177,7 @@ class ToonService
 
     /**
      * Cache encoded TOON data
-     * 
+     *
      * @param string $key Cache key
      * @param mixed $data Data to encode and cache
      * @param int $ttl Cache TTL in seconds
@@ -187,7 +187,7 @@ class ToonService
     public function cacheEncode(string $key, $data, int $ttl = 3600, array $options = []): string
     {
         $cacheKey = $this->getCacheKey($key);
-        
+
         if (config('toon.cache.enabled', true)) {
             $encoded = Cache::remember($cacheKey, $ttl, function () use ($data, $options) {
                 return $this->encode($data, $options);
@@ -201,7 +201,7 @@ class ToonService
 
     /**
      * Retrieve and decode cached TOON data
-     * 
+     *
      * @param string $key Cache key
      * @param array $options Decoding options
      * @return mixed The decoded data or null if not found
@@ -224,7 +224,7 @@ class ToonService
 
     /**
      * Validate TOON string format
-     * 
+     *
      * @param string $toonString The TOON string to validate
      * @return bool True if valid TOON format
      */
@@ -240,7 +240,7 @@ class ToonService
 
     /**
      * Get service availability status
-     * 
+     *
      * @return bool True if service is available
      */
     public function isAvailable(): bool
@@ -250,7 +250,7 @@ class ToonService
 
     /**
      * Get service information and stats
-     * 
+     *
      * @return array Service information
      */
     public function getServiceInfo(): array
@@ -267,7 +267,7 @@ class ToonService
 
     /**
      * Clear all cached TOON data
-     * 
+     *
      * @return bool True if cache was cleared
      */
     public function clearCache(): bool
@@ -279,13 +279,13 @@ class ToonService
         $prefix = config('toon.cache.prefix', 'toon_');
         // Note: This is a simplified cache clearing - in production you might want
         // to implement a more sophisticated cache tagging system
-        
+
         return true;
     }
 
     /**
      * Generate cache key with prefix
-     * 
+     *
      * @param string $key The base cache key
      * @return string The prefixed cache key
      */
@@ -297,7 +297,7 @@ class ToonService
 
     /**
      * Log service operations
-     * 
+     *
      * @param string $operation The operation being performed
      * @param mixed $data The data being processed
      * @return void
@@ -320,7 +320,7 @@ class ToonService
 
     /**
      * Log service errors
-     * 
+     *
      * @param string $operation The operation that failed
      * @param \Exception $exception The exception that occurred
      * @param array $context Additional context

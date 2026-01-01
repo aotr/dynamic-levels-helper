@@ -176,7 +176,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
     }
 
     /**
-     * Registers Blade components.
+     * Registers Blade components and directives.
      */
     protected function registerBladeComponents(): void
     {
@@ -187,6 +187,48 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         } catch (\Throwable $e) {
             // Component already exists, skip registration
             report($e);
+        }
+
+        // Register currency formatting Blade directives
+        $this->registerCurrencyBladeDirectives();
+    }
+
+    /**
+     * Register custom Blade directives for currency formatting.
+     */
+    protected function registerCurrencyBladeDirectives(): void
+    {
+        try {
+            // Simple currency directive: @currency($amount)
+            Blade::directive('currency', function ($expression) {
+                return "<?php echo amount_format({$expression}); ?>";
+            });
+
+            // Advanced currency directive with options: @currencyWithOptions($amount, $options)
+            Blade::directive('currencyWithOptions', function ($expression) {
+                return "<?php echo amount_format({$expression}); ?>";
+            });
+
+            // Alias for currency directive: @rupee($amount)
+            Blade::directive('rupee', function ($expression) {
+                return "<?php echo amount_format({$expression}); ?>";
+            });
+
+            // Currency directive without symbol: @amount($amount)
+            Blade::directive('amount', function ($expression) {
+                return "<?php echo amount_format({$expression}, ['symbol' => '']); ?>";
+            });
+
+            // Currency directive for whole numbers (no decimals): @currencyWhole($amount)
+            Blade::directive('currencyWhole', function ($expression) {
+                return "<?php echo amount_format({$expression}, ['decimals' => 0]); ?>";
+            });
+
+        } catch (\Throwable $e) {
+            // Log error but don't break the application
+            if (function_exists('report')) {
+                report($e);
+            }
         }
     }
 
