@@ -188,6 +188,49 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             // Component already exists, skip registration
             report($e);
         }
+
+        // Register currency Blade directives
+        $this->registerCurrencyBladeDirectives();
+    }
+
+    /**
+     * Register currency formatting Blade directives.
+     */
+    protected function registerCurrencyBladeDirectives(): void
+    {
+        try {
+            // Basic currency formatting
+            Blade::directive('currency', function ($expression) {
+                return "<?php echo amount_format($expression); ?>";
+            });
+
+            // Alias for @currency
+            Blade::directive('rupee', function ($expression) {
+                return "<?php echo amount_format($expression); ?>";
+            });
+
+            // Amount without currency symbol
+            Blade::directive('amount', function ($expression) {
+                return "<?php echo amount_format($expression, ['symbol' => '']); ?>";
+            });
+
+            // Currency without decimals
+            Blade::directive('currencyWhole', function ($expression) {
+                return "<?php echo amount_format($expression, ['decimals' => 0]); ?>";
+            });
+
+            // Currency with custom options
+            Blade::directive('currencyWithOptions', function ($expression) {
+                // Split expression into amount and options
+                $parts = explode(',', $expression, 2);
+                $amount = trim($parts[0]);
+                $options = isset($parts[1]) ? trim($parts[1]) : '[]';
+                return "<?php echo amount_format($amount, $options); ?>";
+            });
+        } catch (\Throwable $e) {
+            // Directive registration failed, skip silently
+            report($e);
+        }
     }
 
     /**

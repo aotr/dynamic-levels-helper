@@ -12,6 +12,7 @@ A comprehensive Laravel package that provides enterprise-grade tools for databas
 - **Geo Data Service**: Automatic syncing of countries, states, and cities from GitHub repository
 - **Lucide Icon System**: SVG icon caching and Blade component integration
 - **Parameter Service**: Efficient request parameter processing with multiple formats
+- **Amount Format Helper**: Indian currency formatting with comprehensive options and Blade directives
 - **Cache Service**: Advanced caching with invalidation and refresh capabilities
 
 ### Developer Tools
@@ -342,7 +343,132 @@ return [
 
 ---
 
-### 📱 SMS Service
+### � Amount Format Helper
+
+**Purpose**: Comprehensive Indian currency formatting with extensive customization options.
+
+The `amount_format()` helper provides professional-grade currency formatting following Indian numbering conventions (lakhs, crores) with flexible configuration for various display requirements.
+
+#### Key Features
+
+- **Indian Numbering System**: Proper comma placement (1,00,000 for 1 lakh, 1,00,00,000 for 1 crore)
+- **Currency Symbol Control**: Customizable symbol with position and spacing options
+- **Smart Decimal Handling**: Option to hide .00, configurable decimal places
+- **Negative Formatting**: Support for minus (-) or brackets () format
+- **Exception-Free**: Robust error handling with safe fallbacks
+- **Multiple Input Types**: Handles int, float, string, null gracefully
+- **Blade Directives**: Ready-to-use directives for templates
+
+#### Basic Usage
+
+```php
+// Basic formatting
+amount_format(1000)           // ₹1,000
+amount_format(1234567.89)     // ₹12,34,567.89
+amount_format(1000.00)        // ₹1,000 (hides .00)
+
+// Indian numbering
+amount_format(100000)         // ₹1,00,000 (1 Lakh)
+amount_format(1000000)        // ₹10,00,000 (10 Lakhs)
+amount_format(10000000)       // ₹1,00,00,000 (1 Crore)
+
+// Negative amounts
+amount_format(-5000)                                    // -₹5,000
+amount_format(-5000, ['negative_format' => 'brackets']) // (₹5,000)
+```
+
+#### Advanced Configuration
+
+```php
+// Custom symbol and positioning
+amount_format(1000, ['symbol' => 'Rs.', 'symbol_space' => true])        // Rs. 1,000
+amount_format(1000, ['symbol' => 'USD', 'symbol_position' => 'after'])  // 1,000USD
+amount_format(1000, ['symbol' => ''])                                   // 1,000 (no symbol)
+
+// Decimal control
+amount_format(1000.00, ['hide_zero_decimals' => false])  // ₹1,000.00
+amount_format(1234.56, ['decimals' => 0])                // ₹1,235 (rounded)
+amount_format(1234.5678, ['decimals' => 3])              // ₹1,234.568
+
+// Custom separators
+amount_format(1234.56, [
+    'decimal_separator' => ',',
+    'thousands_separator' => '.'
+])  // ₹1.234,56
+
+// Complex configuration
+$options = [
+    'symbol' => 'USD',
+    'decimals' => 3,
+    'symbol_position' => 'after',
+    'symbol_space' => true,
+    'negative_format' => 'brackets',
+    'hide_zero_decimals' => false
+];
+amount_format(1234.567, $options)   // 1,234.567 USD
+amount_format(-1234.000, $options)  // (1,234.000 USD)
+```
+
+#### Blade Directives
+
+The package includes convenient Blade directives for template usage:
+
+```blade
+{{-- Basic currency formatting --}}
+@currency($amount)                    {{-- ₹1,000 --}}
+@rupee($amount)                       {{-- Alias for @currency --}}
+@amount($amount)                      {{-- 1,000 (no symbol) --}}
+@currencyWhole($amount)               {{-- ₹1,000 (no decimals) --}}
+@currencyWithOptions($amount, $opts)  {{-- With custom options --}}
+
+{{-- Examples in templates --}}
+<span class="price">@currency($product->price)</span>
+<div class="total">Total: @currency($order->total)</div>
+<p>Savings: @currency($discount, ['symbol' => '', 'decimals' => 0])</p>
+```
+
+#### Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `symbol` | string | '₹' | Currency symbol (use '' for none) |
+| `decimals` | int | 2 | Number of decimal places |
+| `hide_zero_decimals` | bool | true | Hide .00 decimals |
+| `decimal_separator` | string | '.' | Decimal separator character |
+| `thousands_separator` | string | ',' | Thousands separator character |
+| `symbol_position` | string | 'before' | 'before' or 'after' |
+| `symbol_space` | bool | false | Add space between symbol and amount |
+| `negative_format` | string | 'minus' | 'minus' (-₹1,000) or 'brackets' ((₹1,000)) |
+
+#### Error Handling
+
+```php
+// All inputs are handled safely
+amount_format(null)        // ₹0
+amount_format('')          // ₹0
+amount_format('invalid')   // ₹0
+amount_format('1000.50')   // ₹1,000.50 (string parsing)
+amount_format('₹1,000')    // ₹1,000 (already formatted)
+```
+
+#### Use Cases
+
+- **E-commerce**: Product pricing, order totals, discounts
+- **Financial Applications**: Account balances, transaction amounts
+- **Reports**: Financial statements, invoices, receipts  
+- **Dashboards**: Revenue displays, KPI formatting
+- **APIs**: Consistent currency formatting in responses
+
+#### Performance
+
+- Optimized for high-frequency usage
+- Exception-free with comprehensive error handling
+- Minimal memory footprint
+- Fast Indian numbering algorithm
+
+---
+
+### �📱 SMS Service
 
 Multi-provider SMS service with support for major SMS gateways.
 
