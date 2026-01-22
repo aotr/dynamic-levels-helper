@@ -468,15 +468,16 @@ amount_format('₹1,000')    // ₹1,000 (already formatted)
 
 ---
 
-### �📱 SMS Service
+### 📱 SMS Service
 
-Multi-provider SMS service with support for major SMS gateways.
+Multi-provider SMS service with intelligent country-based routing and support for major SMS gateways.
 
 #### Supported Providers
 - **Sinfini** - SMS gateway provider
 - **Onex** - SMS service provider
 - **MyValueFirst** - Enterprise SMS solutions
 - **Infobip** - Global communications platform
+- **Internal** - Internal SMS service (country-restricted)
 
 #### Basic Usage
 
@@ -485,16 +486,53 @@ use Aotr\DynamicLevelHelper\Services\SMS\SmsService;
 
 $smsService = app(SmsService::class);
 
-// Send SMS
+// Send SMS with automatic country-based routing
 $success = $smsService->sendSms(
-    phoneNumber: '1234567890',
+    phoneNumber: '9876543210',
     message: 'Your OTP is 123456',
-    countryCode: 91
+    countryCode: 91  // India - will use mapped provider
+);
+
+// USA number - automatically routes to configured provider
+$success = $smsService->sendSms(
+    phoneNumber: '2025551234',
+    message: 'Your verification code is 789012',
+    countryCode: 1  // USA
+);
+
+// UK number - routes to UK provider
+$success = $smsService->sendSms(
+    phoneNumber: '7911123456',
+    message: 'Welcome to our service!',
+    countryCode: 44  // UK
 );
 
 if ($success) {
     echo "SMS sent successfully!";
 }
+```
+
+#### Country-Based Provider Routing
+
+The SMS service automatically selects the appropriate provider based on the destination country code. This ensures optimal delivery rates and cost efficiency for different regions.
+
+**How it works:**
+1. When sending an SMS, the service checks the `country_mappings` configuration
+2. If a mapping exists for the country code, that provider is used
+3. If no mapping exists, the `default_provider` is used
+4. Provider restrictions (`expected_countries`) are validated before sending
+5. Country code whitelist validation (if enabled) ensures only approved countries receive SMS
+
+**Example Flow:**
+```php
+// India (91) → Configured to use 'internal' provider
+$smsService->sendSms('9876543210', 'Hello', 91);  // Uses 'internal'
+
+// USA (1) → Configured to use 'onex' provider  
+$smsService->sendSms('2025551234', 'Hello', 1);   // Uses 'onex'
+
+// Unmapped country → Uses default provider
+$smsService->sendSms('81312345678', 'Hello', 81); // Uses 'myvaluefirst' (default)
 ```
 
 #### Configuration
@@ -503,16 +541,47 @@ if ($success) {
 // config/dynamic-levels-helper-sms.php
 
 return [
+    // Default provider when no country mapping exists
     'default_provider' => env('SMS_PROVIDER', 'myvaluefirst'),
+    
+    // Country code to provider mappings
+    'country_mappings' => [
+        91 => env('SMS_PROVIDER_91', 'internal'),    // India
+        1 => env('SMS_PROVIDER_1', 'onex'),          // USA/Canada
+        44 => env('SMS_PROVIDER_44', 'infobip'),     // UK
+        65 => env('SMS_PROVIDER_65', 'infobip'),     // Singapore
+        60 => env('SMS_PROVIDER_60', 'infobip'),     // Malaysia
+        971 => env('SMS_PROVIDER_971', 'infobip'),   // UAE
+        // Add more mappings as needed
+    ],
     
     'providers' => [
         'sinfini' => [
             'url' => env('SINFINI_URL'),
             'format' => [
+                'method' => 'sms',
                 'api_key' => env('SINFINI_API_KEY'),
+                'to' => '',
                 'sender' => env('SINFINI_SENDER'),
-                // ... more config
+                'message' => '',
+                'custom' => '',
+                'flash' => env('SINFINI_FLASH', '0'),
             ],
+            // Empty array = can send to any country
+            'expected_countries' => [],
+        ],
+        
+        'onex' => [
+            'url' => env('ONEX_URL'),
+            'format' => [
+                'username' => env('ONEX_USERNAME'),
+                'password' => env('ONEX_PASSWORD'),
+                'to' => '',
+                'from' => env('ONEX_FROM'),
+                'text' => '',
+            ],
+            // Restrict to USA/Canada only
+            'expected_countries' => [1],
         ],
         
         'myvaluefirst' => [
@@ -520,28 +589,209 @@ return [
             'format' => [
                 'username' => env('MYVALUEFIRST_USERNAME'),
                 'password' => env('MYVALUEFIRST_PASSWORD'),
+                'to' => '',
                 'from' => env('MYVALUEFIRST_FROM'),
+                'text' => '',
                 'dlr-mask' => env('MYVALUEFIRST_DLR_MASK', '19'),
             ],
+            'expected_countries' => [],
         ],
         
         'infobip' => [
             'url' => env('INFOBIP_URL'),
+            'api_url' => env('INFOBIP_API_URL'),
             'format' => [
                 'username' => env('INFOBIP_USERNAME'),
                 'password' => env('INFOBIP_PASSWORD'),
                 'indiaDltContentTemplateId' => env('INFOBIP_DLT_TEMPLATE_ID'),
                 'indiaDltPrincipalEntityId' => env('INFOBIP_DLT_ENTITY_ID'),
+                'to' => '',
+                'from' => env('INFOBIP_FROM'),
+                'text' => '',
             ],
+            'expected_countries' => [],
+        ],
+        
+        'internal' => [
+            'url' => env('INTERNAL_SMS_URL'),
+            'format' => [
+                'method' => 'sms',
+                'api_key' => env('INTERNAL_SMS_API_KEY'),
+                'to' => '',
+                'sender' => env('INTERNAL_SMS_SENDER'),
+                'message' => '',
+                'custom' => '',
+                'flash' => env('INTERNAL_SMS_FLASH', '0'),
+            ],
+            // Only allow India
+            'expected_countries' => [91],
         ],
     ],
+    
+    // Whitelist of allowed country codes for SMS
+    'whitelist_country_codes' => [
+        91,   // India
+        1,    // USA/Canada
+        44,   // UK
+        65,   // Singapore
+        60,   // Malaysia
+        971,  // UAE
+        966,  // Saudi Arabia
+    ],
+    
+    // Enable/disable country code validation
+    'validate_country_codes' => env('SMS_VALIDATE_COUNTRY_CODES', false),
 ];
 ```
+
+#### Configuration Explained
+
+**`default_provider`**
+- The fallback provider used when no country mapping exists
+- Can be set via `SMS_PROVIDER` environment variable
+- Default: `'myvaluefirst'`
+
+**`country_mappings`**
+- Maps country codes to specific providers
+- Format: `countryCode => 'provider_name'`
+- Each mapping can be overridden via environment variable (e.g., `SMS_PROVIDER_91`)
+- If a country code is not mapped, `default_provider` is used
+
+**`expected_countries` (per provider)**
+- Restricts which countries a provider can send to
+- Empty array `[]` = provider can send to any country
+- Specified array (e.g., `[91, 1]`) = provider only sends to those countries
+- Validation occurs before sending; fails if country not allowed
+
+**`whitelist_country_codes`**
+- Global whitelist of allowed destination countries
+- Only enforced when `validate_country_codes` is enabled
+- Prevents SMS to unauthorized countries
+- Useful for compliance and cost control
+
+**`validate_country_codes`**
+- Enable/disable global country code validation
+- When `true`: only whitelisted countries can receive SMS
+- When `false`: country validation is skipped
+- Set via `SMS_VALIDATE_COUNTRY_CODES` environment variable
+
+#### Provider Restrictions Example
+
+```php
+// Scenario: Restrict providers to specific regions
+
+'providers' => [
+    // US provider - only for North America
+    'onex' => [
+        'url' => env('ONEX_URL'),
+        'format' => [ /* ... */ ],
+        'expected_countries' => [1],  // USA/Canada only
+    ],
+    
+    // India provider - only for India
+    'internal' => [
+        'url' => env('INTERNAL_SMS_URL'),
+        'format' => [ /* ... */ ],
+        'expected_countries' => [91],  // India only
+    ],
+    
+    // International provider - multiple countries
+    'infobip' => [
+        'url' => env('INFOBIP_URL'),
+        'format' => [ /* ... */ ],
+        'expected_countries' => [44, 65, 60, 971],  // UK, SG, MY, UAE
+    ],
+    
+    // Backup provider - any country
+    'myvaluefirst' => [
+        'url' => env('MYVALUEFIRST_URL'),
+        'format' => [ /* ... */ ],
+        'expected_countries' => [],  // No restrictions
+    ],
+],
+
+'country_mappings' => [
+    1 => 'onex',       // USA → onex
+    91 => 'internal',  // India → internal
+    44 => 'infobip',   // UK → infobip
+    65 => 'infobip',   // Singapore → infobip
+    60 => 'infobip',   // Malaysia → infobip
+    971 => 'infobip',  // UAE → infobip
+],
+
+// Attempting to send India SMS via onex will fail validation:
+// Error: "Provider 'onex' cannot send to country code 91"
+```
+
+#### Error Logging
+
+All SMS errors are logged to a dedicated channel for easy debugging and monitoring.
+
+**Log Location:** `storage/logs/sms/error.log`
+
+**What's Logged:**
+- Failed SMS attempts
+- Provider validation errors
+- Country code restriction violations
+- API connection failures
+- Invalid configuration errors
+
+**Example Log Entry:**
+```
+[2026-01-22 10:30:45] sms-error.ERROR: SMS sending failed: Provider 'internal' cannot send to country code 1 
+{"provider":"internal","country_code":1,"phone":"2025551234"}
+
+[2026-01-22 10:35:12] sms-error.ERROR: Country code 81 is not whitelisted for SMS sending 
+{"country_code":81,"phone":"81312345678","validation_enabled":true}
+```
+
+**Configuration:**
+The error log channel is defined in `config/dynamic-levels-helper.php`:
+```php
+'logging' => [
+    'sms_error' => [
+        'driver' => 'daily',
+        'path' => storage_path('logs/sms/error.log'),
+        'level' => 'error',
+        'days' => 14,
+    ],
+],
+```
+
+**Monitoring Best Practices:**
+- Regularly review `storage/logs/sms/error.log` for issues
+- Set up alerts for repeated failures
+- Check logs when SMS delivery rates drop
+- Use logs to identify misconfigured providers or country mappings
 
 #### Environment Variables
 
 ```env
+# Default provider (fallback)
 SMS_PROVIDER=myvaluefirst
+
+# Country-specific provider mappings
+SMS_PROVIDER_91=internal     # India
+SMS_PROVIDER_1=onex          # USA/Canada
+SMS_PROVIDER_44=infobip      # UK
+SMS_PROVIDER_65=infobip      # Singapore
+SMS_PROVIDER_60=infobip      # Malaysia
+SMS_PROVIDER_971=infobip     # UAE
+
+# Country code validation
+SMS_VALIDATE_COUNTRY_CODES=false
+
+# Sinfini Configuration
+SINFINI_URL=https://api.sinfini.com/api/v4/
+SINFINI_API_KEY=your_api_key
+SINFINI_SENDER=SENDERID
+SINFINI_FLASH=0
+
+# Onex Configuration
+ONEX_URL=https://api.onex.com/send
+ONEX_USERNAME=your_username
+ONEX_PASSWORD=your_password
+ONEX_FROM=SENDERID
 
 # MyValueFirst Configuration
 MYVALUEFIRST_URL=https://api.myvaluefirst.com/psms/servlet/psms.Sendmsg?
@@ -552,10 +802,79 @@ MYVALUEFIRST_DLR_MASK=19
 
 # Infobip Configuration
 INFOBIP_URL=https://api.infobip.com/sms/1/text/single
+INFOBIP_API_URL=https://api.infobip.com
 INFOBIP_USERNAME=your_username
 INFOBIP_PASSWORD=your_password
+INFOBIP_FROM=SENDERID
 INFOBIP_DLT_TEMPLATE_ID=your_template_id
 INFOBIP_DLT_ENTITY_ID=your_entity_id
+
+# Internal SMS Configuration
+INTERNAL_SMS_URL=https://internal.yourdomain.com/api/sms
+INTERNAL_SMS_API_KEY=your_internal_api_key
+INTERNAL_SMS_SENDER=INTERNAL
+INTERNAL_SMS_FLASH=0
+```
+
+#### Migration Notes
+
+**Backward Compatibility:**
+The SMS service maintains full backward compatibility with existing implementations.
+
+**What hasn't changed:**
+- Basic `sendSms()` method signature remains the same
+- Existing provider configurations still work
+- Default provider behavior unchanged when no mappings defined
+- All existing environment variables continue to work
+
+**What's new (opt-in):**
+- Country-based routing (requires `country_mappings` configuration)
+- Provider restrictions (optional `expected_countries` per provider)
+- Country code validation (disabled by default, enable via `SMS_VALIDATE_COUNTRY_CODES`)
+- Dedicated error logging (`storage/logs/sms/error.log`)
+
+**Migration Steps:**
+
+1. **No action required for basic usage** - existing code continues to work
+
+2. **To enable country-based routing** (optional):
+   ```php
+   // Add to config/dynamic-levels-helper-sms.php
+   'country_mappings' => [
+       91 => 'internal',
+       1 => 'onex',
+   ],
+   ```
+
+3. **To restrict providers by country** (optional):
+   ```php
+   // Add to specific provider config
+   'internal' => [
+       // ... existing config
+       'expected_countries' => [91],  // Only India
+   ],
+   ```
+
+4. **To enable country validation** (optional):
+   ```env
+   # Add to .env
+   SMS_VALIDATE_COUNTRY_CODES=true
+   ```
+
+5. **Monitor error logs**:
+   - New error log location: `storage/logs/sms/error.log`
+   - Old errors still appear in default Laravel log
+   - SMS-specific errors now have dedicated channel
+
+**Example Migration:**
+```php
+// Before (still works)
+$smsService->sendSms('9876543210', 'Hello', 91);  // Uses default provider
+
+// After (with country mappings)
+$smsService->sendSms('9876543210', 'Hello', 91);  // Uses 'internal' (mapped provider)
+
+// Both work identically, no code changes needed!
 ```
 
 ---

@@ -32,5 +32,11 @@ return [
             'level' => 'debug',
             'days' => 7,
         ],
+        'sms_error' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/sms/error.log'),
+            'level' => 'error',
+            'days' => 14,  // Retain SMS errors for 14 days
+        ],
     ],
 ];
