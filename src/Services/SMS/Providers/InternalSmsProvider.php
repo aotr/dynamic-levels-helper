@@ -50,13 +50,13 @@ class InternalSmsProvider implements SmsProviderInterface
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         $response = curl_exec($ch);
-        
+
         if (curl_errno($ch)) {
             $error = curl_error($ch);
             curl_close($ch);
             throw new Exception("cURL Error: {$error}");
         }
-        
+
         curl_close($ch);
 
         return $response;

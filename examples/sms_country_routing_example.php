@@ -2,7 +2,7 @@
 
 /**
  * SMS Service Country-Based Routing Example
- * 
+ *
  * This example demonstrates how to use the SMS service with
  * country-based provider routing and validation.
  */
@@ -106,32 +106,32 @@ use Aotr\DynamicLevelHelper\Services\SMS\SmsService;
 class OtpController extends Controller
 {
     protected $smsService;
-    
+
     public function __construct(SmsService $smsService)
     {
         $this->smsService = $smsService;
     }
-    
+
     public function sendOtp(Request $request)
     {
         $phoneNumber = $request->input('phone');
         $countryCode = $request->input('country_code');
         $otp = rand(100000, 999999);
-        
+
         // Provider is automatically selected based on country_code
         $success = $this->smsService->sendSms(
             phoneNumber: $phoneNumber,
             message: "Your OTP is {$otp}. Valid for 5 minutes.",
             countryCode: $countryCode
         );
-        
+
         if ($success) {
             return response()->json([
                 'success' => true,
                 'message' => 'OTP sent successfully'
             ]);
         }
-        
+
         return response()->json([
             'success' => false,
             'message' => 'Failed to send OTP'

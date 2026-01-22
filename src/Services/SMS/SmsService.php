@@ -31,7 +31,7 @@ class SmsService
 
             // Select provider based on country code
             $providerKey = $this->selectProvider($countryCode);
-            
+
             if (!isset($this->providers[$providerKey])) {
                 Log::channel('sms_error')->error('Provider not found', [
                     'provider_key' => $providerKey,
@@ -42,7 +42,7 @@ class SmsService
             }
 
             $provider = $this->providers[$providerKey];
-            
+
             // Validate provider supports this country code
             if (!$this->providerSupportsCountry($providerKey, $countryCode)) {
                 Log::channel('sms_error')->error('Provider does not support country code', [
@@ -75,7 +75,7 @@ class SmsService
     {
         // Check country_mappings for specific country code
         $countryMappings = $this->config['country_mappings'] ?? [];
-        
+
         if (isset($countryMappings[$countryCode])) {
             return $countryMappings[$countryCode];
         }
@@ -87,7 +87,7 @@ class SmsService
     protected function providerSupportsCountry(string $providerKey, int $countryCode): bool
     {
         $expectedCountries = $this->getProviderExpectedCountries($providerKey);
-        
+
         // If expected_countries is empty, provider supports all countries
         if (empty($expectedCountries)) {
             return true;
