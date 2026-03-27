@@ -21,8 +21,7 @@
     }
   },
   "require": {
-    "php": "^8.1",
-    "mischasigtermans/laravel-toon": "^0.2"
+    "php": "^8.1"
   },
   "files": [
     "src/helpers.php"
@@ -44,8 +43,12 @@
       ]
     }
   },
+  "suggest": {
+    "mischasigtermans/laravel-toon": "^0.2 - Required for TOON encoding/decoding functionality (Note: only supports Laravel 12 and below. For Laravel 13, wait for laravel-toon v0.3+ support)"
+  },
   "require-dev": {
     "laravel/pint": "^1.18",
+    "mischasigtermans/laravel-toon": "^0.2",
     "orchestra/testbench": "^10.0||^11.0",
     "pestphp/pest": "^3.5",
     "phpstan/phpstan": "^1.12"

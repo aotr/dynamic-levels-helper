@@ -79,10 +79,12 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             __DIR__ . '/../config/lucide.php' => config_path('lucide.php'),
         ], 'lucide-config');
 
-        // Publish Toon config
-        $this->publishes([
-            __DIR__ . '/../config/toon.php' => config_path('toon.php'),
-        ], 'toon-config');
+        // Publish Toon config (only if laravel-toon is installed)
+        if (class_exists('MischaSigtermans\Toon\Toon')) {
+            $this->publishes([
+                __DIR__ . '/../config/toon.php' => config_path('toon.php'),
+            ], 'toon-config');
+        }
     }
 
     /**
@@ -143,9 +145,12 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
 
         $this->app->alias(LucideIconService::class, 'lucide-icon-service');
 
-        $this->app->singleton('toon-service', function () {
-            return new ToonService();
-        });
+        // Register ToonService only if laravel-toon is installed
+        if (class_exists('MischaSigtermans\Toon\Toon')) {
+            $this->app->singleton('toon-service', function () {
+                return new ToonService();
+            });
+        }
     }
 
     /**
@@ -169,10 +174,14 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             __DIR__ . '/../config/lucide.php',
             'lucide'
         );
-        $this->mergeConfigFrom(
-            __DIR__ . '/../config/toon.php',
-            'toon'
-        );
+
+        // Only merge toon config if laravel-toon is installed
+        if (class_exists('MischaSigtermans\Toon\Toon')) {
+            $this->mergeConfigFrom(
+                __DIR__ . '/../config/toon.php',
+                'toon'
+            );
+        }
     }
 
     /**
