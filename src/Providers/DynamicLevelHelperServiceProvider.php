@@ -207,12 +207,6 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
 
         $this->app->alias(LucideIconService::class, 'lucide-icon-service');
 
-<<<<<<< HEAD
-        // Register ToonService
-        $this->app->singleton('toon-service', function () {
-            return new ToonService();
-        });
-=======
         // Register SettingsService
         $this->app->singleton(SettingsService::class, function () {
             return new SettingsService();
@@ -224,7 +218,6 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
                 return new ToonService();
             });
         }
->>>>>>> 20d2a33 (Add comprehensive tests for settings management and auditing)
     }
 
     /**
@@ -249,11 +242,6 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             'lucide'
         );
         $this->mergeConfigFrom(
-<<<<<<< HEAD
-            __DIR__ . '/../config/toon.php',
-            'toon'
-        );
-=======
             __DIR__ . '/../config/settings.php',
             'settings'
         );
@@ -265,7 +253,6 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
                 'toon'
             );
         }
->>>>>>> 20d2a33 (Add comprehensive tests for settings management and auditing)
     }
 
     /**
