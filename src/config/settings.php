@@ -46,6 +46,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Settings Route Path
+    |--------------------------------------------------------------------------
+    |
+    | URL path where the settings form will be accessible.
+    | Configure this to match your application's route definition.
+    | Default: /admin/settings
+    |
+    */
+    'route_path' => env('SETTINGS_ROUTE_PATH', '/admin/settings'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Encrypted Fields (Optional)
     |--------------------------------------------------------------------------
     |
