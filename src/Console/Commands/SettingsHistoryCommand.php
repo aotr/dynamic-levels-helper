@@ -9,7 +9,7 @@ use Symfony\Component\Console\Helper\Table;
 
 class SettingsHistoryCommand extends Command
 {
-    protected $signature = 'settings:history 
+    protected $signature = 'settings:history
                             {--key= : Filter by setting key}
                             {--group= : Filter by setting group}
                             {--action= : Filter by action (created, updated, deleted)}
@@ -66,7 +66,7 @@ class SettingsHistoryCommand extends Command
         $rows = [];
 
         foreach ($logs as $log) {
-            $changedBy = $log->auditable_type 
+            $changedBy = $log->auditable_type
                 ? "{$log->auditable_type}:{$log->auditable_id}"
                 : 'System';
 

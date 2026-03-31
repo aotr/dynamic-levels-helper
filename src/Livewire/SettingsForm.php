@@ -17,10 +17,10 @@ class SettingsForm extends Component
 
     #[Validate('required|string')]
     public $newKey = '';
-    
+
     #[Validate('required|string')]
     public $newValue = '';
-    
+
     #[Validate('required|in:string,number,integer,decimal,boolean,select')]
     public $newType = 'string';
 
@@ -100,7 +100,7 @@ class SettingsForm extends Component
         if ($setting && isset($this->formData['value'])) {
             // Cast value based on type
             $value = $this->castValue($this->formData['value'], $this->formData['type']);
-            
+
             $setting->update(['value' => $value]);
 
             $this->dispatch('notify', message: "✓ Setting '{$key}' saved successfully");
