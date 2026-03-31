@@ -9,6 +9,8 @@ use Aotr\DynamicLevelHelper\Console\Commands\EnhancedDBServiceCommand;
 use Aotr\DynamicLevelHelper\Console\Commands\GeoDataScriptCommand;
 use Aotr\DynamicLevelHelper\Console\Commands\LucideCacheCommand;
 use Aotr\DynamicLevelHelper\Console\Commands\SyncCountriesAndStatesJsonFilesCommand;
+use Aotr\DynamicLevelHelper\Console\Commands\WarmSettingsCacheCommand;
+use Aotr\DynamicLevelHelper\Console\Commands\SettingsHistoryCommand;
 use Aotr\DynamicLevelHelper\DynamicHelpersLoader;
 use Aotr\DynamicLevelHelper\Services\LucideIconService;
 use Aotr\DynamicLevelHelper\Services\ToonService;
@@ -19,6 +21,10 @@ use Aotr\DynamicLevelHelper\Middleware\BasicAuth;
 use Aotr\DynamicLevelHelper\Providers\EnhancedDBServiceProvider;
 use Aotr\DynamicLevelHelper\Services\SMS\SmsProviderInterface;
 use Aotr\DynamicLevelHelper\Services\SMS\SmsService;
+use Aotr\DynamicLevelHelper\Services\SettingsService;
+use Aotr\DynamicLevelHelper\Models\Setting;
+use Aotr\DynamicLevelHelper\Observers\SettingObserver;
+use Aotr\DynamicLevelHelper\Observers\SettingHistoryObserver;
 use Illuminate\Support\ServiceProvider;
 
 final class DynamicLevelHelperServiceProvider extends ServiceProvider
@@ -32,10 +38,17 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         app()->register(SmsServiceProvider::class);
         app()->register(EnhancedDBServiceProvider::class);
 
+        // Register settings observers for cache invalidation and audit logging
+        Setting::observe(SettingObserver::class);
+        Setting::observe(SettingHistoryObserver::class);
+
         $this->publishConfig();
+        $this->publishMigrations();
+        $this->publishViews();
         $this->registerMiddleware();
         $this->registerConsoleCommands();
         $this->registerBladeComponents();
+        $this->registerLivewireComponents();
     }
 
     /**
@@ -48,6 +61,7 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $this->mergeConfig();
         $this->mergeLoggingConfig();
         $this->app->bind(SmsProviderInterface::class, SmsServiceProvider::class);
+        $this->app->singleton(SettingsService::class);
     }
 
     /**
@@ -85,6 +99,32 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
                 __DIR__ . '/../config/toon.php' => config_path('toon.php'),
             ], 'toon-config');
         }
+
+        // Publish Settings config
+        $this->publishes([
+            __DIR__ . '/../config/settings.php' => config_path('settings.php'),
+        ], 'settings-config');
+    }
+
+    /**
+     * Publishes views for the package.
+     */
+    protected function publishViews(): void
+    {
+        $this->publishes([
+            __DIR__ . '/../../resources/views' => resource_path('views/vendor/dynamic-levels-helper'),
+        ], 'settings-views');
+    }
+
+    /**
+     * Publishes database migrations.
+     */
+    protected function publishMigrations(): void
+    {
+        $this->publishes([
+            __DIR__ . '/../../database/migrations/2026_03_31_000000_create_settings_table.php' => database_path('migrations/' . date('Y_m_d_His') . '_create_settings_table.php'),
+            __DIR__ . '/../../database/migrations/2026_03_31_000001_create_setting_audit_logs_table.php' => database_path('migrations/' . date('Y_m_d_His', time() + 1) . '_create_setting_audit_logs_table.php'),
+        ], 'settings-migrations');
     }
 
     /**
@@ -107,6 +147,8 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
                 SyncCountriesAndStatesJsonFilesCommand::class,
                 GeoDataScriptCommand::class,
                 LucideCacheCommand::class,
+                WarmSettingsCacheCommand::class,
+                SettingsHistoryCommand::class,
             ]);
         }
     }
@@ -119,6 +161,12 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         $file = __DIR__ . '/../helpers.php';
         if (file_exists($file)) {
             require_once $file;
+        }
+
+        // Load settings helper
+        $settingsHelper = __DIR__ . '/../helpers/settings-helper.php';
+        if (file_exists($settingsHelper)) {
+            require_once $settingsHelper;
         }
     }
 
@@ -144,6 +192,11 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
         });
 
         $this->app->alias(LucideIconService::class, 'lucide-icon-service');
+
+        // Register SettingsService
+        $this->app->singleton(SettingsService::class, function () {
+            return new SettingsService();
+        });
 
         // Register ToonService only if laravel-toon is installed
         if (class_exists('MischaSigtermans\Toon\Toon')) {
@@ -174,6 +227,10 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
             __DIR__ . '/../config/lucide.php',
             'lucide'
         );
+        $this->mergeConfigFrom(
+            __DIR__ . '/../config/settings.php',
+            'settings'
+        );
 
         // Only merge toon config if laravel-toon is installed
         if (class_exists('MischaSigtermans\Toon\Toon')) {
@@ -200,6 +257,16 @@ final class DynamicLevelHelperServiceProvider extends ServiceProvider
 
         // Register currency Blade directives
         $this->registerCurrencyBladeDirectives();
+    }
+
+    /**
+     * Registers Livewire components.
+     */
+    protected function registerLivewireComponents(): void
+    {
+        if (class_exists('Livewire\Livewire')) {
+            \Livewire\Livewire::component('settings-form', \Aotr\DynamicLevelHelper\Livewire\SettingsForm::class);
+        }
     }
 
     /**
