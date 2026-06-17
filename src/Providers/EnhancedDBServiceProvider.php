@@ -4,7 +4,14 @@ declare(strict_types=1);
 
 namespace Aotr\DynamicLevelHelper\Providers;
 
+use Aotr\DynamicLevelHelper\Events\StoredProcedureCompletedEvent;
+use Aotr\DynamicLevelHelper\Events\StoredProcedureExceptionEvent;
+use Aotr\DynamicLevelHelper\Events\StoredProcedureTriggerWarningEvent;
+use Aotr\DynamicLevelHelper\Listeners\AlertStoredProcedureException;
+use Aotr\DynamicLevelHelper\Listeners\LogStoredProcedureEvent;
+use Aotr\DynamicLevelHelper\Listeners\NotifyTriggerWarnings;
 use Aotr\DynamicLevelHelper\Services\EnhancedDBService;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class EnhancedDBServiceProvider extends ServiceProvider
@@ -30,10 +37,47 @@ class EnhancedDBServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Register event listeners for stored procedure events
+        $this->registerEventListeners();
+
         // Register graceful shutdown handler
         if ($this->app->runningInConsole()) {
             $this->registerShutdownHandler();
         }
+    }
+
+    /**
+     * Register event listeners for stored procedure lifecycle events.
+     *
+     * Event map:
+     * - StoredProcedureCompletedEvent       → LogStoredProcedureEvent
+     * - StoredProcedureTriggerWarningEvent  → NotifyTriggerWarnings
+     * - StoredProcedureExceptionEvent       → AlertStoredProcedureException
+     */
+    private function registerEventListeners(): void
+    {
+        // ── StoredProcedureCompletedEvent ──
+        // Logs every SP completion (success, trigger warnings, trigger errors)
+        Event::listen(
+            StoredProcedureCompletedEvent::class,
+            [LogStoredProcedureEvent::class, 'handle']
+        );
+
+        // ── StoredProcedureTriggerWarningEvent ──
+        // Sends notifications when triggers raise warnings
+        Event::listen(
+            StoredProcedureTriggerWarningEvent::class,
+            [NotifyTriggerWarnings::class, 'handle']
+        );
+
+        // ── StoredProcedureExceptionEvent ──
+        // Sends alerts (email / Slack / webhook) for exceptions.
+        // Note: AlertStoredProcedureException also logs the exception via its logException() method,
+        // so there is no need for a separate LogStoredProcedureEvent registration here.
+        Event::listen(
+            StoredProcedureExceptionEvent::class,
+            [AlertStoredProcedureException::class, 'handle']
+        );
     }
 
     /**
